@@ -1,5 +1,7 @@
 __pycache__/
 .venv/
+.conda/
+.empty/
 .vscode/
 *.json
 data/
