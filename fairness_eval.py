@@ -174,7 +174,8 @@ class DroppingClientManager(flagon.client_manager.ClientManager):
         self.round += 1
         if self.round == self.drop_round:
             for _ in range(2):
-                del self.clients[self.rng.integers(len(self.clients))]
+                self.clients.pop()
+                # del self.clients[self.rng.integers(len(self.clients))]
         return super().sample()
 
     def test_sample(self):
