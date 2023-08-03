@@ -105,21 +105,29 @@ class ModelState:
         return jax.tree_util.tree_leaves(self.params)
     
     def step(self, X, Y, epochs, steps_per_epoch=None, verbose=0):
-        indices = np.arange(len(Y))
-        self.rng.shuffle(indices)
-        idx = indices[:len(indices) - (len(indices) % 32)].reshape((-1, 32))
-        for ix in (pbar := tqdm(idx)):
-            self.params, self.state = self.solver_step(params=self.params, state=self.state, X=X[ix], Y=Y[ix])
-            pbar.set_postfix_str(f"LOSS: {self.state.value:.3f}")
-        if len(indices) % 32:
-            ix = indices[-len(indices) % 32:]
-            self.params, self.state = self.solver_step(params=self.params, state=self.state, X=X[ix], Y=Y[ix])
-        return {"loss": self.state.value}
+        for e in range(epochs):
+            indices = np.arange(len(Y))
+            self.rng.shuffle(indices)
+            idx = indices[:len(indices) - (len(indices) % 32)].reshape((-1, 32))
+            if steps_per_epoch:
+                idx = idx[:steps_per_epoch]
+            if verbose:
+                idx = tqdm(idx)
+            for ix in idx:
+                self.params, self.state = self.solver_step(params=self.params, state=self.state, X=X[ix], Y=Y[ix])
+                if verbose:
+                    idx.set_postfix_str(f"LOSS: {self.state.value:.3f}, epoch: {e + 1}/{epochs}")
+            if len(indices) % 32:
+                ix = indices[-len(indices) % 32:]
+                self.params, self.state = self.solver_step(params=self.params, state=self.state, X=X[ix], Y=Y[ix])
+        return {"loss": self.state.value.item()}
     
     def evaluate(self, X, Y, verbose=0):
         indices = np.arange(len(Y))
         idx = indices[:len(indices) - (len(indices) % 32)].reshape((-1, 32))
-        for ix in (pbar := tqdm(idx)):
+        if verbose:
+            idx = tqdm(idx)
+        for ix in idx:
             self.metrics.add_batch(self.params, X[ix], Y[ix])
         if len(indices) % 32:
             ix = indices[-len(indices) % 32:]
@@ -140,12 +148,18 @@ class Client(flagon.Client):
 
     def fit(self, parameters, config):
         self.model.set_parameters(parameters)
-        history = self.model.step(self.data['train']['X'], self.data['train']['Y'], epochs=config['num_epochs'], steps_per_epoch=config.get("num_steps"), verbose=0)
+        history = self.model.step(
+            self.data['train']['X'],
+            self.data['train']['Y'],
+            epochs=config['num_epochs'],
+            steps_per_epoch=config.get("num_steps"),
+            verbose=config.get("verbose")
+        )
         return self.model.get_parameters(), len(self.data['train']), history
 
     def evaluate(self, parameters, config):
         self.model.set_parameters(parameters)
-        return len(self.data['test']), self.model.evaluate(self.data['test']['X'], self.data['test']['Y'], verbose=0)
+        return len(self.data['test']), self.model.evaluate(self.data['test']['X'], self.data['test']['Y'], verbose=config.get("verbose"))
 
 
 def lda(labels, nclients, rng, alpha=0.5):
@@ -175,6 +189,7 @@ def create_clients(data, create_model_fn, network_arch, seed=None):
     def create_client(client_id: str) -> Client:
         return Client(data.select({"train": next(idx), "test": np.arange(len(data['test']))}), create_model_fn, rng)
     return create_client
+
 
 if __name__ == "__main__":
     data = load_mnist()
