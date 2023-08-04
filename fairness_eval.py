@@ -4,13 +4,12 @@ import json
 import itertools
 import datasets
 import numpy as np
-import scipy as sp
-import sklearn.metrics as skm
-import sklearn.cluster as skc
-import sklearn.decomposition as skd
 import einops
 import matplotlib.pyplot as plt
-import tensorflow as tf
+import jax
+import jax.numpy as jnp
+import optax
+import flax.linen as nn
 from tqdm.auto import trange
 
 import flagon
@@ -18,6 +17,8 @@ from flagon.strategy import FedAVG
 from flagon.common import Config, Parameters, Metrics, count_clients, to_attribute_array
 from flagon.strategy import FedAVG
 import ntmg
+
+import flax_lightning
 
 import os
 os.makedirs("results", exist_ok=True)
@@ -48,35 +49,115 @@ def load_mnist() -> ntmg.Dataset:
     return dataset
 
 
-def create_model() -> tf.keras.Model:
-    inputs = tf.keras.Input((28, 28, 1))
-    x = tf.keras.layers.Flatten()(inputs)
-    x = tf.keras.layers.Dense(100, activation="relu")(x)
-    x = tf.keras.layers.Dense(50, activation="relu")(x)
-    x = tf.keras.layers.Dense(10, activation="softmax")(x)
-    model = tf.keras.Model(inputs=inputs, outputs=x)
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=0.01),
-        loss="sparse_categorical_crossentropy",
-        metrics=["accuracy"]
+class Net(nn.Module):
+    @nn.compact
+    def __call__(self, x):
+        x = einops.rearrange(x, "b w h c -> b (w h c)")
+        x = nn.Dense(100)(x)
+        x = nn.relu(x)
+        x = nn.Dense(50)(x)
+        x = nn.relu(x)
+        x = nn.Dense(10)(x)
+        return nn.softmax(x)
+
+
+def create_model(seed=None):
+    model = Net()
+    params = model.init(jax.random.PRNGKey(42), jnp.zeros((1, 28, 28, 1)))
+    return flax_lightning.Model(
+        model,
+        params,
+        optax.adam(0.01),
+        "crossentropy_loss",
+        metrics=["accuracy", "crossentropy_loss"],
+        seed=seed
     )
-    return model
+
+class FreezingMomentum(FedAVG):
+    def __init__(self):
+        self.momentum = None
+        self.prev_parameters = None
+        self.episode = 0
+        self.num_clients = 0
+
+    def aggregate(
+        self, client_parameters: List[Parameters], client_samples: List[int], parameters: Parameters, config: Config
+    ) -> Parameters:
+        grads = [np.average(clayer, weights=client_samples, axis=0) - slayer for clayer, slayer in zip(to_attribute_array(client_parameters), parameters)]
+        num_clients = len(client_samples)
+        if num_clients < self.num_clients:
+            # Freeze Momomentum
+            pass
+        else:
+            self.num_clients = num_clients
+            if self.episode % config['num_episodes'] == 0:
+                if self.momentum is None:
+                    self.momentum = [np.zeros_like(p) for p in parameters]
+                    self.prev_parameters = parameters
+                else:
+                    self.momentum = [config["mu1"] * m + (p - pp) for m, pp, p in zip(self.momentum, self.prev_parameters, parameters)]
+                    self.prev_parameters = parameters
+        self.episode += 1
+        return [p + config["mu2"] * m + g for p, m, g in zip(self.prev_parameters, self.momentum, grads)]
+
+
+class IntermediateFineTuner(flagon.MiddleServer):
+    def evaluate(self, parameters, config):
+        flagon.common.logger.info("Starting finetuning on middle server")
+        strategy = FedAVG()  # Use standard FedAVG for finetuning since it does not need to conform with the upper tier
+        start_time = time.time()
+        tuned_parameters = parameters
+        for e in range(1, config['num_finetune_episodes'] + 1):
+            client_parameters = []
+            client_samples = []
+            client_metrics = []
+            clients = self.client_manager.sample()
+            for c in clients:
+                parameters, samples, metrics = c.fit(tuned_parameters, config)
+                client_parameters.append(parameters)
+                client_samples.append(samples)
+                client_metrics.append(metrics)
+            tuned_parameters = strategy.aggregate(
+                client_parameters, client_samples, tuned_parameters, config
+            )
+        flagon.common.logger.info(f"Completed middle server finetuning in {time.time() - start_time}s")
+
+        flagon.common.logger.info("Performing analytics on middle server")
+        start_time = time.time()
+        client_samples = []
+        client_metrics = []
+        clients = self.client_manager.sample()
+        for c in clients:
+            samples, metrics = c.evaluate(tuned_parameters, config)
+            client_samples.append(samples)
+            client_metrics.append(metrics)
+        flagon.common.logger.info(f"Completed middle server analytics in {time.time() - start_time}s")
+        aggregated_metrics = self.strategy.analytics(client_metrics, client_samples)
+        flagon.common.logger.info(f"Aggregated final metrics {aggregated_metrics}")
+
+        return sum(client_samples), aggregated_metrics
 
 
 class Client(flagon.Client):
-    def __init__(self, data, create_model_fn):
+    def __init__(self, data, create_model_fn, seed=None):
         self.data = data
-        self.model = create_model_fn()
+        self.model = create_model_fn(seed)
 
     def fit(self, parameters, config):
-        self.model.set_weights(parameters)
-        history = self.model.fit(self.data['train']['X'], self.data['train']['Y'], epochs=config['num_epochs'], steps_per_epoch=config.get("num_steps"), verbose=0)
-        return self.model.get_weights(), len(self.data['train']), {k: v[-1] for k, v in history.history.items()}
+        self.model.set_parameters(parameters)
+        metrics = self.model.step(
+            self.data['train']['X'],
+            self.data['train']['Y'],
+            epochs=config['num_epochs'],
+            steps_per_epoch=config.get("num_steps"),
+            verbose=0
+        )
+        return self.model.get_parameters(), len(self.data['train']), metrics
 
     def evaluate(self, parameters, config):
-        self.model.set_weights(parameters)
-        loss, accuracy = self.model.evaluate(self.data['test']['X'], self.data['test']['Y'], verbose=0)
-        return len(self.data['test']), {'loss': loss, 'accuracy': accuracy}
+        self.model.set_parameters(parameters)
+        metrics = self.model.evaluate(self.data['test']['X'], self.data['test']['Y'], verbose=0)
+        return len(self.data['test']), metrics
 
 
 def regional_distribution(labels, network_arch, rng, alpha=0.5):
@@ -125,7 +206,7 @@ def create_clients(data, create_model_fn, network_arch, seed=None):
     data = data.normalise()
 
     def create_client(client_id: str):
-        return Client(data.select({"train": next(idx), "test": next(test_idx)}), create_model_fn)
+        return Client(data.select({"train": next(idx), "test": next(test_idx)}), create_model_fn, seed)
     return create_client
 
 
@@ -136,9 +217,12 @@ def experiment(config):
     data = data.normalise()
     for i in (pbar := trange(config['repeat'])):
         seed = round(np.pi**i + np.exp(i)) % 2**32
-        tf.random.set_seed(seed)
-        server = flagon.Server(create_model().get_weights(), config, client_manager=DroppingClientManager(config['drop_round'], seed=seed))
-        network_arch = {"clients": [{"clients": 3} for _ in range(5)]}
+        server = flagon.Server(
+            create_model().get_parameters(),
+            config,
+            client_manager=DroppingClientManager(config['drop_round'], seed=seed),
+        )
+        network_arch = {"clients": [{"clients": 3, "strategy": FreezingMomentum()} for _ in range(5)]}
         history = flagon.start_simulation(
             server,
             create_clients(data, create_model, network_arch, seed=seed),
@@ -155,7 +239,7 @@ def fairness_analytics(client_metrics, client_samples, config):
     for cm in client_metrics[1:]:
         for k, v in cm.items():
             distributed_metrics[k].append(v)
-    return {f"{k} std": np.std(v) for k, v in distributed_metrics.items()}
+    return {f"{k} std": np.std(v).item() for k, v in distributed_metrics.items()}
 
 
 class DroppingClientManager(flagon.client_manager.ClientManager):
@@ -175,7 +259,7 @@ class DroppingClientManager(flagon.client_manager.ClientManager):
         if self.round == self.drop_round:
             for _ in range(2):
                 self.clients.pop()
-                # del self.clients[self.rng.integers(len(self.clients))]
+                # self.clients.pop(self.rng.integers(len(self.clients)))
         return super().sample()
 
     def test_sample(self):
@@ -183,8 +267,21 @@ class DroppingClientManager(flagon.client_manager.ClientManager):
 
 
 if __name__ == "__main__":
-    experiment_config = {"num_rounds": 5, "num_episodes": 1, "num_epochs": 1, "repeat": 10, "analytics": [fairness_analytics], "drop_round": 6}
+    experiment_config = {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "repeat": 1,
+        "analytics": [fairness_analytics],
+        "drop_round": 6,
+        "mu1": 0.1,
+        "mu2": 2/3
+    }
     results = experiment(experiment_config)
 
-    with open(f"results/fairness_r{experiment_config['num_rounds']}_e{experiment_config['num_episodes']}_s{experiment_config['num_epochs']}_dr{experiment_config['drop_round']}.json", "w") as f:
+    filename = "results/fairness_{}.json".format(
+        '_'.join([f'{k}={v}' for k, v in experiment_config.items() if k not in ['analytics', 'round']])
+    )
+    with open(filename, "w") as f:
         json.dump(results, f)
+    print(f"Saved results to {filename}")
