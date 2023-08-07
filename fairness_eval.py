@@ -68,7 +68,7 @@ def create_model(seed=None):
     return flax_lightning.Model(
         model,
         params,
-        optax.adam(0.01),
+        optax.sgd(0.01, momentum=0.9),
         "crossentropy_loss",
         metrics=["accuracy", "crossentropy_loss"],
         seed=seed
@@ -227,7 +227,7 @@ def experiment(config):
             "clients": [
                 {
                     "clients": 3,
-                    "strategy": FreezingMomentum() if config.get('freezing_momentum') else flagon.server.FedAVG(),
+                    "strategy": FreezingMomentum() if config.get('mu1') else flagon.server.FedAVG(),
                     "middle_server_class": IntermediateFineTuner if config.get("num_finetuning_episodes") else flagon.MiddleServer
                 } for _ in range(5)
             ]

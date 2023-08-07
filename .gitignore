@@ -3,6 +3,5 @@ __pycache__/
 .conda/
 .empty/
 .vscode/
-*.json
 data/
 results/
