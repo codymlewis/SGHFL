@@ -225,7 +225,11 @@ def experiment(config):
         )
         network_arch = {
             "clients": [
-                {"clients": 3, "strategy": FreezingMomentum() if config.get('freezing_momentum') else flagon.server.FedAVG()} for _ in range(5)
+                {
+                    "clients": 3,
+                    "strategy": FreezingMomentum() if config.get('freezing_momentum') else flagon.server.FedAVG(),
+                    "middle_server_class": IntermediateFineTuner if config.get("num_finetuning_episodes") else flagon.MiddleServer
+                } for _ in range(5)
             ]
         }
         history = flagon.start_simulation(
