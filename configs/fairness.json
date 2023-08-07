@@ -3,8 +3,9 @@
         "num_rounds": 5,
         "num_episodes": 1,
         "num_epochs": 1,
-        "repeat": 10,
-        "drop_round": 6
+        "repeat": 1,
+        "drop_round": 2,
+        "adaptive_loss": true
     },
     {
         "num_rounds": 5,

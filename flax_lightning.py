@@ -44,12 +44,20 @@ class Model:
         loss_fun = globals()[loss_fun] if isinstance(loss_fun, str) else loss_fun
         self.model = model
         self.params = params
-        self.solver = jaxopt.OptaxSolver(opt=opt, fun=loss_fun(model))
+        self.opt = opt
+        self.loss_fun = loss_fun(model)
+        self.solver = jaxopt.OptaxSolver(opt=opt, fun=self.loss_fun)
         self.state = self.solver.init_state(params)
         self.solver_step = jax.jit(self.solver.update)
         self.rng = np.random.default_rng(seed)
         self.metrics = Metrics(model, metrics)
         self.params_tree_structure = jax.tree_util.tree_structure(self.params)
+
+    def change_loss_fun(self, loss_fun):
+        self.loss_fun = loss_fun
+        self.solver = jaxopt.OptaxSolver(opt=self.opt, fun=loss_fun)
+        self.state = self.solver.init_state(self.params)
+        self.solver_step = jax.jit(self.solver.update)
 
     def set_parameters(self, params_leaves):
         self.params = jax.tree_util.tree_unflatten(self.params_tree_structure, params_leaves)

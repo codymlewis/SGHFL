@@ -139,6 +139,48 @@ class IntermediateFineTuner(flagon.MiddleServer):
         return sum(client_samples), aggregated_metrics
 
 
+def adaptive_loss(model, loss_fun, old_params):
+    def _apply(params, X, Y):
+        return loss_fun(params, X, Y) + euclidean_distance(params, old_params)
+    return _apply
+
+
+def euclidean_distance(a_tree, b_tree):
+    a, _ = jax.flatten_util.ravel_pytree(a_tree)
+    b, _ = jax.flatten_util.ravel_pytree(b_tree)
+    return np.linalg.norm(a - b)
+
+
+class AdaptiveLossMS(flagon.MiddleServer):
+    def __init__(self, strategy, client_manager=None):
+        super().__init__(strategy, client_manager)
+        self.num_clients = 0
+
+    def fit(self, parameters, config):
+        if len(self.client_manager.clients) > self.num_clients:
+            self.num_clients = len(self.client_manager.clients)
+        elif len(self.client_manager.clients) < self.num_clients or config.get("adapt_loss"):
+            flagon.common.logger.info("Lost clients, adapting loss")
+            for c in self.client_manager.clients:
+                c.model.change_loss_fun(adaptive_loss(c.model.model, c.model.loss_fun, parameters))
+            self.num_clients = len(self.client_manager.clients)
+        return super().fit(parameters, config)
+
+
+class AdaptiveServer(flagon.Server):
+    def __init__(self, initial_parameters, config, strategy=None, client_manager=None):
+        super().__init__(initial_parameters, config, strategy, client_manager)
+        self.num_clients = 0
+
+    def round_fit(self):
+        if len(self.client_manager.clients) > self.num_clients:
+            self.num_clients = len(self.client_manager.clients)
+        elif len(self.client_manager.clients) < self.num_clients:
+            flagon.common.logger.info("Lost clients, adapting loss")
+            self.config["adapt_loss"] = True
+        return super().round_fit()
+
+
 class Client(flagon.Client):
     def __init__(self, data, create_model_fn, seed=None):
         self.data = data
@@ -218,7 +260,7 @@ def experiment(config):
     data = data.normalise()
     for i in (pbar := trange(config['repeat'])):
         seed = round(np.pi**i + np.exp(i)) % 2**32
-        server = flagon.Server(
+        server = (AdaptiveServer if config.get("adaptive_loss") else flagon.Server)(
             create_model().get_parameters(),
             config,
             client_manager=DroppingClientManager(config['drop_round'], seed=seed),
@@ -228,7 +270,7 @@ def experiment(config):
                 {
                     "clients": 3,
                     "strategy": FreezingMomentum() if config.get('mu1') else flagon.server.FedAVG(),
-                    "middle_server_class": IntermediateFineTuner if config.get("num_finetuning_episodes") else flagon.MiddleServer
+                    "middle_server_class": IntermediateFineTuner if config.get("num_finetuning_episodes") else AdaptiveLossMS if config.get("adaptive_loss") else flagon.MiddleServer
                 } for _ in range(5)
             ]
         }
@@ -289,8 +331,9 @@ if __name__ == "__main__":
 
     results = experiment(experiment_config)
 
-    filename = "results/fairness_{}.json".format(
-        '_'.join([f'{k}={v}' for k, v in experiment_config.items() if k not in ['analytics', 'round', 'mu1', 'mu2']])
+    filename = "results/fairness_{}{}.json".format(
+        '_'.join([f'{k}={v}' for k, v in experiment_config.items() if k not in ['analytics', 'round', 'mu1', 'mu2']]),
+        "_momentum" if experiment_config.get("mu1") else ""
     )
     with open(filename, "w") as f:
         json.dump(results, f)
