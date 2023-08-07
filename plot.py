@@ -91,10 +91,10 @@ if __name__ == "__main__":
         results = {"Drop": drop_results, "Without Drop": no_drop_results}
 
         plot_boxplot(results, "accuracy", train=False, save=args.save)
-        plot_boxplot(results, "loss", train=False, save=args.save)
+        plot_boxplot(results, "crossentropy_loss", train=False, save=args.save)
 
         plot_boxplot(results, "accuracy std", train=False, save=args.save)
-        plot_boxplot(results, "loss std", train=False, save=args.save)
+        plot_boxplot(results, "crossentropy_loss std", train=False, save=args.save)
     
     if args.attack:
         with open("results/attack.json", "r") as f:

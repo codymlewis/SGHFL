@@ -1,3 +1,4 @@
+import argparse
 from typing import List
 import time
 import json
@@ -222,7 +223,11 @@ def experiment(config):
             config,
             client_manager=DroppingClientManager(config['drop_round'], seed=seed),
         )
-        network_arch = {"clients": [{"clients": 3, "strategy": FreezingMomentum()} for _ in range(5)]}
+        network_arch = {
+            "clients": [
+                {"clients": 3, "strategy": FreezingMomentum() if config.get('freezing_momentum') else flagon.server.FedAVG()} for _ in range(5)
+            ]
+        }
         history = flagon.start_simulation(
             server,
             create_clients(data, create_model, network_arch, seed=seed),
@@ -239,7 +244,9 @@ def fairness_analytics(client_metrics, client_samples, config):
     for cm in client_metrics[1:]:
         for k, v in cm.items():
             distributed_metrics[k].append(v)
-    return {f"{k} std": np.std(v).item() for k, v in distributed_metrics.items()}
+    analytics = {f"{k} mean": np.mean(v).item() for k, v in distributed_metrics.items() if "std" in k}
+    analytics.update({f"{k} std": np.std(v).item() for k, v in distributed_metrics.items()})
+    return analytics
 
 
 class DroppingClientManager(flagon.client_manager.ClientManager):
@@ -267,20 +274,19 @@ class DroppingClientManager(flagon.client_manager.ClientManager):
 
 
 if __name__ == "__main__":
-    experiment_config = {
-        "num_rounds": 5,
-        "num_episodes": 1,
-        "num_epochs": 1,
-        "repeat": 1,
-        "analytics": [fairness_analytics],
-        "drop_round": 6,
-        "mu1": 0.1,
-        "mu2": 2/3
-    }
+    parser = argparse.ArgumentParser(description="Perform experiments evaluating the fairness when clients drop out from colloboration.")
+    parser.add_argument("-i", "--id", type=int, default=1, help="Which of the experiments in the config to perform (counts from 1).")
+    parser.add_argument("-d", "--dataset", type=str, default="fmnist", help="Which of the datasets to perform the experiment with.")
+    args = parser.parse_args()
+
+    with open("configs/fairness.json", 'r') as f:
+        experiment_config = json.load(f)[args.id - 1]
+    experiment_config["analytics"] = [fairness_analytics]
+
     results = experiment(experiment_config)
 
     filename = "results/fairness_{}.json".format(
-        '_'.join([f'{k}={v}' for k, v in experiment_config.items() if k not in ['analytics', 'round']])
+        '_'.join([f'{k}={v}' for k, v in experiment_config.items() if k not in ['analytics', 'round', 'mu1', 'mu2']])
     )
     with open(filename, "w") as f:
         json.dump(results, f)
