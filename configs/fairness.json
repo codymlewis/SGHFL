@@ -3,41 +3,6 @@
         "num_rounds": 5,
         "num_episodes": 1,
         "num_epochs": 1,
-        "repeat": 1,
-        "drop_round": 2,
-        "adaptive_loss": true
-    },
-    {
-        "num_rounds": 5,
-        "num_episodes": 1,
-        "num_epochs": 1,
-        "repeat": 10,
-        "drop_round": 6,
-        "mu1": 0.9,
-        "mu2": 0.666
-    },
-    {
-        "num_rounds": 5,
-        "num_episodes": 1,
-        "num_epochs": 1,
-        "repeat": 10,
-        "drop_round": 6,
-        "num_finetune_episodes": 2
-    },
-    {
-        "num_rounds": 5,
-        "num_episodes": 1,
-        "num_epochs": 1,
-        "repeat": 10,
-        "drop_round": 6,
-        "num_finetune_episodes": 2,
-        "mu1": 0.9,
-        "mu2": 0.666
-    },
-    {
-        "num_rounds": 5,
-        "num_episodes": 1,
-        "num_epochs": 1,
         "repeat": 10,
         "drop_round": 2
     },
@@ -56,6 +21,71 @@
         "num_epochs": 1,
         "repeat": 10,
         "drop_round": 2,
+        "num_finetune_episodes": 2,
+        "adaptive_loss": "mse"
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "repeat": 10,
+        "drop_round": 2,
+        "adaptive_loss": "mse"
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "repeat": 10,
+        "drop_round": 2,
+        "adaptive_loss": "cosine_distance"
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "repeat": 10,
+        "drop_round": 2,
+        "num_finetune_episodes": 2,
+        "adaptive_loss": "mse",
+        "mu1": 0.9,
+        "mu2": 0.666
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "repeat": 10,
+        "drop_round": 2,
+        "num_finetune_episodes": 2,
+        "adaptive_loss": "cosine_distance",
+        "mu1": 0.9,
+        "mu2": 0.666
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "repeat": 10,
+        "drop_round": 2,
+        "num_finetune_episodes": 2,
+        "adaptive_loss": "cosine_distance"
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "repeat": 10,
+        "drop_round": 2,
+        "mu1": 0.9,
+        "mu2": 0.666
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "repeat": 10,
+        "drop_round": 2,
         "num_finetune_episodes": 2
     },
     {
@@ -64,6 +94,105 @@
         "num_epochs": 1,
         "repeat": 10,
         "drop_round": 2,
+        "num_finetune_episodes": 2,
+        "mu1": 0.9,
+        "mu2": 0.666
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "repeat": 10,
+        "drop_round": 6
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "repeat": 10,
+        "drop_round": 6,
+        "mu1": 0.9,
+        "mu2": 0.666
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "repeat": 10,
+        "drop_round": 6,
+        "num_finetune_episodes": 2,
+        "adaptive_loss": "mse"
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "repeat": 10,
+        "drop_round": 6,
+        "num_finetune_episodes": 2,
+        "adaptive_loss": "cosine_distance"
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "repeat": 10,
+        "drop_round": 6,
+        "adaptive_loss": "mse"
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "repeat": 10,
+        "drop_round": 6,
+        "adaptive_loss": "cosine_distance"
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "repeat": 10,
+        "drop_round": 6,
+        "num_finetune_episodes": 2,
+        "adaptive_loss": "mse",
+        "mu1": 0.9,
+        "mu2": 0.666
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "repeat": 10,
+        "drop_round": 6,
+        "num_finetune_episodes": 2,
+        "adaptive_loss": "cosine_distance",
+        "mu1": 0.9,
+        "mu2": 0.666
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "repeat": 10,
+        "drop_round": 6,
+        "mu1": 0.9,
+        "mu2": 0.666
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "repeat": 10,
+        "drop_round": 6,
+        "num_finetune_episodes": 2
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "repeat": 10,
+        "drop_round": 6,
         "num_finetune_episodes": 2,
         "mu1": 0.9,
         "mu2": 0.666

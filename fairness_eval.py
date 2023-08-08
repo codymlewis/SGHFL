@@ -64,7 +64,7 @@ class Net(nn.Module):
 
 def create_model(seed=None):
     model = Net()
-    params = model.init(jax.random.PRNGKey(42), jnp.zeros((1, 28, 28, 1)))
+    params = model.init(jax.random.PRNGKey(seed if seed else 42), jnp.zeros((1, 28, 28, 1)))
     return flax_lightning.Model(
         model,
         params,
@@ -139,16 +139,20 @@ class IntermediateFineTuner(flagon.MiddleServer):
         return sum(client_samples), aggregated_metrics
 
 
-def adaptive_loss(model, loss_fun, old_params):
-    def _apply(params, X, Y):
-        return loss_fun(params, X, Y) + euclidean_distance(params, old_params)
-    return _apply
-
-
-def euclidean_distance(a_tree, b_tree):
+def mse(a_tree, b):
     a, _ = jax.flatten_util.ravel_pytree(a_tree)
-    b, _ = jax.flatten_util.ravel_pytree(b_tree)
-    return np.linalg.norm(a - b)
+    return jnp.mean((a - b)**2)
+
+
+def cosine_distance(a_tree, b):
+    a, _ = jax.flatten_util.ravel_pytree(a_tree)
+    return 1 - jnp.abs(a.dot(b) / (jnp.linalg.norm(a) * jnp.linalg.norm(b)))
+
+
+def adaptive_loss(model, loss_fun, old_params, dist_fun=mse):
+    def _apply(params, X, Y):
+        return loss_fun(params, X, Y) + dist_fun(params, old_params)
+    return _apply
 
 
 class AdaptiveLossMS(flagon.MiddleServer):
@@ -160,11 +164,56 @@ class AdaptiveLossMS(flagon.MiddleServer):
         if len(self.client_manager.clients) > self.num_clients:
             self.num_clients = len(self.client_manager.clients)
         elif len(self.client_manager.clients) < self.num_clients or config.get("adapt_loss"):
-            flagon.common.logger.info("Lost clients, adapting loss")
+            flagon.common.logger.info("A middle server was lost, adapting loss")
+            flattened_parameters = jnp.concatenate([jnp.array(p.reshape(-1)) for p in parameters])
             for c in self.client_manager.clients:
-                c.model.change_loss_fun(adaptive_loss(c.model.model, c.model.loss_fun, parameters))
+                c.model.change_loss_fun(
+                    adaptive_loss(
+                        c.model.model,
+                        c.model.loss_fun,
+                        flattened_parameters,
+                        dist_fun=mse if config['adaptive_loss'] == "mse" else cosine_distance
+                    )
+                )
             self.num_clients = len(self.client_manager.clients)
         return super().fit(parameters, config)
+
+
+class AdaptiveLossIntermediateFineTuner(AdaptiveLossMS):
+    def evaluate(self, parameters, config):
+        flagon.common.logger.info("Starting finetuning on middle server")
+        strategy = FedAVG()  # Use standard FedAVG for finetuning since it does not need to conform with the upper tier
+        start_time = time.time()
+        tuned_parameters = parameters
+        for e in range(1, config['num_finetune_episodes'] + 1):
+            client_parameters = []
+            client_samples = []
+            client_metrics = []
+            clients = self.client_manager.sample()
+            for c in clients:
+                parameters, samples, metrics = c.fit(tuned_parameters, config)
+                client_parameters.append(parameters)
+                client_samples.append(samples)
+                client_metrics.append(metrics)
+            tuned_parameters = strategy.aggregate(
+                client_parameters, client_samples, tuned_parameters, config
+            )
+        flagon.common.logger.info(f"Completed middle server finetuning in {time.time() - start_time}s")
+
+        flagon.common.logger.info("Performing analytics on middle server")
+        start_time = time.time()
+        client_samples = []
+        client_metrics = []
+        clients = self.client_manager.sample()
+        for c in clients:
+            samples, metrics = c.evaluate(tuned_parameters, config)
+            client_samples.append(samples)
+            client_metrics.append(metrics)
+        flagon.common.logger.info(f"Completed middle server analytics in {time.time() - start_time}s")
+        aggregated_metrics = self.strategy.analytics(client_metrics, client_samples)
+        flagon.common.logger.info(f"Aggregated final metrics {aggregated_metrics}")
+
+        return sum(client_samples), aggregated_metrics
 
 
 class AdaptiveServer(flagon.Server):
@@ -172,13 +221,15 @@ class AdaptiveServer(flagon.Server):
         super().__init__(initial_parameters, config, strategy, client_manager)
         self.num_clients = 0
 
-    def round_fit(self):
+    def round_fit(self, r, history):
+        self.config["adapt_loss"] = False
         if len(self.client_manager.clients) > self.num_clients:
             self.num_clients = len(self.client_manager.clients)
         elif len(self.client_manager.clients) < self.num_clients:
             flagon.common.logger.info("Lost clients, adapting loss")
             self.config["adapt_loss"] = True
-        return super().round_fit()
+            self.num_clients = len(self.client_manager.clients)
+        return super().round_fit(r, history)
 
 
 class Client(flagon.Client):
@@ -265,12 +316,20 @@ def experiment(config):
             config,
             client_manager=DroppingClientManager(config['drop_round'], seed=seed),
         )
+        if config.get("num_finetuning_episodes") and config.get("adaptive_loss"):
+            middle_server_class = AdaptiveLossIntermediateFineTuner
+        elif config.get("num_finetuning_episodes"):
+            middle_server_class = IntermediateFineTuner
+        elif config.get("adaptive_loss"):
+            middle_server_class = AdaptiveLossMS
+        else:
+            middle_server_class = flagon.MiddleServer
         network_arch = {
             "clients": [
                 {
                     "clients": 3,
                     "strategy": FreezingMomentum() if config.get('mu1') else flagon.server.FedAVG(),
-                    "middle_server_class": IntermediateFineTuner if config.get("num_finetuning_episodes") else AdaptiveLossMS if config.get("adaptive_loss") else flagon.MiddleServer
+                    "middle_server_class": middle_server_class
                 } for _ in range(5)
             ]
         }
@@ -332,7 +391,7 @@ if __name__ == "__main__":
     results = experiment(experiment_config)
 
     filename = "results/fairness_{}{}.json".format(
-        '_'.join([f'{k}={v}' for k, v in experiment_config.items() if k not in ['analytics', 'round', 'mu1', 'mu2']]),
+        '_'.join([f'{k}={v}' for k, v in experiment_config.items() if k not in ['analytics', 'round', 'mu1', 'adapt_loss']]),
         "_momentum" if experiment_config.get("mu1") else ""
     )
     with open(filename, "w") as f:

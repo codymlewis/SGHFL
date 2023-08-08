@@ -1,3 +1,4 @@
+from functools import partial
 import argparse
 import os
 import json
@@ -25,15 +26,8 @@ def format_final_table(styler):
     return styler
 
 
-def gradsim_env_process(json_file, environment):
-    env_name = f"{json_file.replace('_gradient_similarity.json', '')}:{environment}"
-    env_name = env_name.replace('gradient_similarity.json', 'small_mu2')
-    env_name = env_name.replace('_', ' ')
-    return env_name
-
-
-def fairness_env_process(json_file, environment):
-    env_name = f"{json_file.replace('fairness_', '')}:{environment}"
+def env_process_fn(json_file, keyword=""):
+    env_name = f"{json_file.replace(f'{keyword}_', '')}"
     env_name = env_name.replace('.json', '')
     return env_name
 
@@ -51,36 +45,28 @@ def process_train_test_results(data):
                     new_results[k] = f"{np.mean(v):.3f} ({np.std(v):.3f})"
     return new_results
 
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Create a LaTeX from the experiment results.")
+    parser = argparse.ArgumentParser(description="Create a LaTeX table from the experiment results.")
     parser.add_argument("-f", "--fairness", action="store_true", help="Use the fairness experiment results.")
-    parser.add_argument("-g", "--gradient-similarity", action="store_true", help="Use the gradient similarity experiment results.")
+    parser.add_argument("-p", "--performance", action="store_true", help="Use the performance experiment results.")
     args = parser.parse_args()
 
-    if args.gradient_similarity:
-        json_files = [f for f in os.listdir('results') if 'gradient_similarity' in f]
-        env_process = gradsim_env_process
-
-    if args.fairness:
-        json_files = [f for f in os.listdir('results') if 'fairness' in f]
-        env_process = fairness_env_process
+    keyword = 'performance' if args.performance else 'fairness'
+    json_files = [f for f in os.listdir('results') if keyword in f]
+    env_process = partial(env_process_fn, keyword=keyword)
 
     tabular_data = {}
     for json_file in json_files:
         with open(f"results/{json_file}", 'r') as f:
             data = make_leaves_lists(json.load(f))
-        if args.gradient_similarity:
-            for environment, results in data.items():
-                env_name = env_process(json_file, environment)
-                tabular_data[env_name] = process_train_test_results(results)
-        elif args.fairness:
-            env_name = env_process(json_file, "")
-            tabular_data[env_name] = process_train_test_results(data)
+        env_name = env_process(json_file)
+        tabular_data[env_name] = process_train_test_results(data)
 
     df = pd.DataFrame(tabular_data).T
     df = df.reset_index()
-    df[['environment', 'algorithm']] = df['index'].str.split(":", expand=True)    
-    cols = df.columns[-2:].tolist() + df.columns[:-2].tolist()
+    df['environment'] = df['index'] 
+    cols = df.columns[-1:].tolist() + df.columns[:-1].tolist()
     df = df[cols]
     df = df.drop(columns="index")
     df = df.style.pipe(format_final_table).to_latex(position_float='centering')

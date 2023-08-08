@@ -1,0 +1,180 @@
+[
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "mu1": 0.9,
+        "mu2": 0.1,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_finetune_episodes": 3,
+        "num_epochs": 1,
+        "mu1": 0.9,
+        "mu2": 0.1,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "mu1": 0.9,
+        "mu2": 0.666,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 1,
+        "num_finetune_episodes": 3,
+        "num_epochs": 1,
+        "mu1": 0.9,
+        "mu2": 0.666,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 3,
+        "num_epochs": 1,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 3,
+        "num_epochs": 1,
+        "mu1": 0.9,
+        "mu2": 0.666,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 3,
+        "num_finetune_episodes": 4,
+        "num_epochs": 1,
+        "mu1": 0.9,
+        "mu2": 0.666,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 5,
+        "num_epochs": 1,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 5,
+        "num_epochs": 1,
+        "mu1": 0.9,
+        "mu2": 0.666,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 5,
+        "num_finetune_episodes": 4,
+        "num_epochs": 1,
+        "mu1": 0.9,
+        "mu2": 0.666,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 10,
+        "num_epochs": 1,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 10,
+        "num_epochs": 1,
+        "mu1": 0.9,
+        "mu2": 0.666,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 5,
+        "num_episodes": 10,
+        "num_finetune_episodes": 4,
+        "num_epochs": 1,
+        "mu1": 0.9,
+        "mu2": 0.666,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 2,
+        "num_episodes": 5,
+        "num_epochs": 1,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 2,
+        "num_episodes": 5,
+        "num_epochs": 1,
+        "mu1": 0.9,
+        "mu2": 0.666,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 2,
+        "num_episodes": 5,
+        "num_finetune_episodes": 4,
+        "num_epochs": 1,
+        "mu1": 0.9,
+        "mu2": 0.666,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 3,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 3,
+        "num_episodes": 1,
+        "num_epochs": 1,
+        "mu1": 0.9,
+        "mu2": 0.666,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 3,
+        "num_episodes": 1,
+        "num_finetune_episodes": 4,
+        "num_epochs": 1,
+        "mu1": 0.9,
+        "mu2": 0.666,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 3,
+        "num_episodes": 5,
+        "num_epochs": 1,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 3,
+        "num_episodes": 5,
+        "num_epochs": 1,
+        "mu1": 0.9,
+        "mu2": 0.666,
+        "repeat": 10
+    },
+    {
+        "num_rounds": 3,
+        "num_episodes": 5,
+        "num_finetune_episodes": 4,
+        "num_epochs": 1,
+        "mu1": 0.9,
+        "mu2": 0.666,
+        "repeat": 10
+    }
+]
