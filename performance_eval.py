@@ -1,5 +1,6 @@
 import argparse
 from typing import List
+import pickle
 import time
 import json
 import itertools
@@ -51,7 +52,71 @@ def load_mnist() -> ntmg.Dataset:
     return dataset
 
 
+def load_solar_home():
+    with open("data/solar_home_data.pkl", 'rb') as f:
+        data = pickle.load(f)
+
+    def get_customer_data(customer=1):
+        idx = np.arange(24, len(data[customer]))
+        expanded_idx = np.array([np.arange(i - 24, i - 1) for i in idx])
+        return data[customer][expanded_idx], data[customer][idx, 0]
+    return get_customer_data
+
+
+def load_sh_customer_regions():
+    with open("data/customer_regions.json", 'r') as f:
+        customer_regions = json.load(f)
+
+    data_collector_counts = {}
+    client_ids = {}
+    for customer, region in customer_regions.items():
+        data_collector = region
+        if not data_collector_counts.get(data_collector):
+            data_collector_counts[data_collector] = 0
+        client_ids[f"{data_collector}-{data_collector_counts[data_collector]}"] = int(customer)
+        data_collector_counts[data_collector] += 1
+    return data_collector_counts, client_ids
+
+def create_sh_clients(create_model_fn, nclients, client_ids, seed=None):
+    get_customer_data = load_solar_home()
+
+    def create_client(client_id: str):
+        client_X, client_Y = get_customer_data(client_ids[client_id])
+        client_data = {"train": {"X": client_X[:300 * 24], "Y": client_Y[:300 * 24]}, "test": {"X": client_X[300 * 24:], "Y": client_Y[300 * 24:]}}
+        return Client(client_data, create_model_fn)
+    return create_client
+
 class Net(nn.Module):
+    @nn.compact
+    def __call__(self, x):
+        # x = nn.Conv(64, (5, 5))(x)
+        # x = nn.relu(x)
+        # x = nn.Conv(64, (3, 3))(x)
+        # x = nn.relu(x)
+        # x = nn.Conv(32, (2, 2))(x)
+        # x = nn.relu(x)
+        x = einops.rearrange(x, "b h s -> b (h s)")
+        x = nn.Dense(100)(x)
+        x = nn.relu(x)
+        x = nn.Dense(50)(x)
+        x = nn.relu(x)
+        x = nn.Dense(1)(x)
+        return x
+
+def create_sh_model(seed=None):
+    model = Net()
+    params = model.init(jax.random.PRNGKey(seed if seed else 42), jnp.zeros((1, 23, 4)))
+    return flax_lightning.Model(
+        model,
+        params,
+        optax.sgd(0.01, momentum=0.9),
+        "mean_absolute_error",
+        metrics=["mean_absolute_error"],
+        seed=seed
+    )
+
+
+class LeNet(nn.Module):
     @nn.compact
     def __call__(self, x):
         x = einops.rearrange(x, "b w h c -> b (w h c)")
@@ -64,7 +129,7 @@ class Net(nn.Module):
 
 
 def create_model(seed=None):
-    model = Net()
+    model = LeNet()
     params = model.init(jax.random.PRNGKey(seed if seed else 42), jnp.zeros((1, 28, 28, 1)))
     return flax_lightning.Model(
         model,
@@ -96,7 +161,6 @@ class Client(flagon.Client):
         self.model.set_parameters(parameters)
         metrics = self.model.evaluate(self.data['test']['X'], self.data['test']['Y'], verbose=0)
         return len(self.data['test']), metrics
-
 
 
 class KickbackMomentum(FedAVG):
@@ -217,15 +281,34 @@ class CosineSimilarity(flagon.common.Metric):
 def experiment(config, strategy_class, middle_server_class=flagon.MiddleServer):
     aggregate_results = []
     test_results = []
-    data = load_mnist()
-    data = data.normalise()
+    if config['dataset'] == "fmnist":
+        data = load_mnist()
+        data = data.normalise()
+    else:
+        data_collector_counts, client_ids = load_sh_customer_regions()
     for i in (pbar := trange(config['repeat'])):
         seed = round(np.pi**i + np.exp(i)) % 2**32
-        server = flagon.Server(create_model().get_parameters(), config)
-        network_arch = {"clients": [{"clients": 3, "strategy": strategy_class(), "middle_server_class": middle_server_class} for _ in range(5)]}
+        if config['dataset'] == "fmnist":
+            server = flagon.Server(create_model().get_parameters(), config)
+            network_arch = {
+                "clients": [
+                    {"clients": 3, "strategy": strategy_class(), "middle_server_class": middle_server_class} for _ in range(5)
+                ]
+            }
+            clients = create_clients(data, create_model, network_arch, seed=seed)
+        else:
+            server = flagon.Server(create_sh_model().get_parameters(), config)
+            network_arch = {
+                "clients": [{"clients": 0} for _ in data_collector_counts.keys()],
+            }
+            for k, v in data_collector_counts.items():
+                network_arch['clients'][k]['clients'] = v
+            clients = create_sh_clients(
+                create_sh_model, flagon.common.count_clients(network_arch), client_ids, seed=seed
+            )
         history = flagon.start_simulation(
             server,
-            create_clients(data, create_model, network_arch, seed=seed),
+            clients,
             network_arch
         )
         aggregate_results.append(history.aggregate_history[config['num_rounds']])
@@ -243,13 +326,13 @@ if __name__ == "__main__":
     with open("configs/performance.json", 'r') as f:
         experiment_config = json.load(f)[args.id - 1]
     experiment_config["metrics"] = [CosineSimilarity()]
+    experiment_config["dataset"] = args.dataset
 
     results = experiment(
         experiment_config,
         KickbackMomentum if experiment_config.get("mu1") else FedAVG,
         IntermediateFineTuner if experiment_config.get("num_finetune_episodes") else flagon.MiddleServer
     )
-
 
     filename = "results/performance_{}{}.json".format(
         '_'.join([f'{k}={v}' for k, v in experiment_config.items() if k not in ['metrics', 'round', 'mu1', 'mu2']]),

@@ -12,6 +12,26 @@ def crossentropy_loss(model):
     return _apply
 
 
+def mean_squared_error(model):
+    def _apply(params, X, Y):
+        return jnp.mean((model.apply(params, X).T - Y)**2)
+    return _apply
+
+
+def mean_absolute_error(model):
+    def _apply(params, X, Y):
+        return jnp.mean(jnp.abs(model.apply(params, X).T - Y))
+    return _apply
+
+
+def r2score(model):
+    def _apply(params, X, Y):
+        ss_res = jnp.sum((model.apply(params, X).T - Y)**2)
+        ss_tot = jnp.sum((Y - Y.mean())**2)
+        return 1 - (ss_res / ss_tot)
+    return _apply
+
+
 def accuracy(model):
     def _apply(params, X, Y):
         preds = jnp.argmax(model.apply(params, X), axis=-1)
