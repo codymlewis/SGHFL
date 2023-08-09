@@ -18,6 +18,13 @@ def l2_loss(model):
         return jnp.mean(0.5 * (model.apply(params, X).T - Y)**2)
     return _apply
 
+
+def log_cosh_loss(model):
+    def _apply(params, X, Y):
+        return jnp.mean(jnp.log(jnp.cosh(jnp.squeeze(model.apply(params, X).T) - Y)))
+    return _apply
+
+
 def mean_squared_error(model):
     def _apply(params, X, Y):
         return jnp.mean((model.apply(params, X).T - Y)**2)
@@ -91,11 +98,11 @@ class Model:
     def get_parameters(self):
         return jax.tree_util.tree_leaves(self.params)
     
-    def step(self, X, Y, epochs, steps_per_epoch=None, verbose=0):
+    def step(self, X, Y, epochs, steps_per_epoch=None, batch_size=32, verbose=0):
         for e in range(epochs):
             indices = np.arange(len(Y))
             self.rng.shuffle(indices)
-            idx = indices[:len(indices) - (len(indices) % 32)].reshape((-1, 32))
+            idx = indices[:len(indices) - (len(indices) % batch_size)].reshape((-1, batch_size))
             if steps_per_epoch:
                 idx = idx[:steps_per_epoch]
             if verbose:
@@ -104,19 +111,19 @@ class Model:
                 self.params, self.state = self.solver_step(params=self.params, state=self.state, X=X[ix], Y=Y[ix])
                 if verbose:
                     idx.set_postfix_str(f"LOSS: {self.state.value:.3f}, epoch: {e + 1}/{epochs}")
-            if len(indices) % 32:
-                ix = indices[-len(indices) % 32:]
+            if len(indices) % batch_size:
+                ix = indices[-len(indices) % batch_size:]
                 self.params, self.state = self.solver_step(params=self.params, state=self.state, X=X[ix], Y=Y[ix])
         return {"loss": self.state.value.item()}
     
-    def evaluate(self, X, Y, verbose=0):
+    def evaluate(self, X, Y, batch_size=32, verbose=0):
         indices = np.arange(len(Y))
-        idx = indices[:len(indices) - (len(indices) % 32)].reshape((-1, 32))
+        idx = indices[:len(indices) - (len(indices) % batch_size)].reshape((-1, batch_size))
         if verbose:
             idx = tqdm(idx)
         for ix in idx:
             self.metrics.add_batch(self.params, X[ix], Y[ix])
-        if len(indices) % 32:
-            ix = indices[-len(indices) % 32:]
+        if len(indices) % batch_size:
+            ix = indices[-len(indices) % batch_size:]
             self.metrics.add_batch(self.params, X[ix], Y[ix])
         return self.metrics.compute()
