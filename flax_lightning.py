@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 import jaxopt
 import numpy as np
+from tqdm import tqdm
 
 
 def crossentropy_loss(model):
@@ -11,6 +12,11 @@ def crossentropy_loss(model):
         return -jnp.mean(jnp.einsum("bl,bl -> b", one_hot, jnp.log(logits)))
     return _apply
 
+
+def l2_loss(model):
+    def _apply(params, X, Y):
+        return jnp.mean(0.5 * (model.apply(params, X).T - Y)**2)
+    return _apply
 
 def mean_squared_error(model):
     def _apply(params, X, Y):
