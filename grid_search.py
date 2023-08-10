@@ -65,7 +65,7 @@ def create_model(lr=0.001, opt=optax.sgd, loss="mean_absolute_error", seed=None)
 
 if __name__ == "__main__":
     X_train, Y_train, X_test, Y_test = get_data()
-    processor = skp.StandardScaler().fit(Y_train.reshape(-1, 1))
+    processor = skp.MinMaxScaler().fit(Y_train.reshape(-1, 1))
     Y_train = processor.transform(Y_train.reshape(-1, 1)).reshape(-1)
     Y_test = processor.transform(Y_test.reshape(-1, 1)).reshape(-1)
 
@@ -81,12 +81,3 @@ if __name__ == "__main__":
         df = pd.concat((df, pd.DataFrame({"lr": [lr], "optimizer": [opt_name], "loss": [loss], "r2 score": [results['r2score'].item()]})))
 
     df.to_csv("results/grid_search.csv")
-
-
-"""
-Best scorer:
-lr                   0.0005
-optimizer              adam
-loss          log_cosh_loss
-r2 score            0.24983
-"""
