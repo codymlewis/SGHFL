@@ -31,6 +31,12 @@ def mean_squared_error(model):
     return _apply
 
 
+def root_mean_squared_error(model):
+    def _apply(params, X, Y):
+        return jnp.sqrt(jnp.mean((model.apply(params, X).T - Y)**2))
+    return _apply
+
+
 def mean_absolute_error(model):
     def _apply(params, X, Y):
         return jnp.mean(jnp.abs(model.apply(params, X).T - Y))

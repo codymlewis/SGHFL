@@ -14,6 +14,7 @@ import jax.numpy as jnp
 import optax
 import flax.linen as nn
 from tqdm.auto import trange
+import sklearn.preprocessing as skp
 
 import flagon
 from flagon.strategy import FedAVG
@@ -56,10 +57,17 @@ def load_solar_home():
     with open("data/solar_home_data.pkl", 'rb') as f:
         data = pickle.load(f)
 
+    concat_data = np.concatenate(list(data.values()))
+    X_processor = skp.StandardScaler().fit(concat_data)
+    Y_processor = skp.MinMaxScaler().fit(concat_data[:, 0].reshape(-1, 1))
+
     def get_customer_data(customer=1):
         idx = np.arange(24, len(data[customer]))
         expanded_idx = np.array([np.arange(i - 24, i - 1) for i in idx])
-        return data[customer][expanded_idx], data[customer][idx, 0]
+        return (
+            X_processor.transform(data[customer][expanded_idx].reshape(-1, 4)).reshape(-1, 23, 4),
+            Y_processor.transform(data[customer][idx, 0].reshape(-1, 1)).reshape(-1)
+        )
     return get_customer_data
 
 
@@ -89,19 +97,19 @@ def create_sh_clients(create_model_fn, nclients, client_ids, seed=None):
 class Net(nn.Module):
     @nn.compact
     def __call__(self, x):
-        # x = nn.Conv(64, (5, 5))(x)
-        # x = nn.relu(x)
-        # x = nn.Conv(64, (3, 3))(x)
-        # x = nn.relu(x)
-        # x = nn.Conv(32, (2, 2))(x)
-        # x = nn.relu(x)
+        x = nn.Conv(32, (3,))(x)
+        x = nn.relu(x)
+        x = nn.Conv(32, (3,))(x)
+        x = nn.relu(x)
+        x = nn.Conv(64, (3,))(x)
+        x = nn.relu(x)
         x = einops.rearrange(x, "b h s -> b (h s)")
         x = nn.Dense(100)(x)
         x = nn.relu(x)
         x = nn.Dense(50)(x)
         x = nn.relu(x)
         x = nn.Dense(1)(x)
-        return x
+        return nn.sigmoid(x)
 
 def create_sh_model(seed=None):
     model = Net()
@@ -109,9 +117,9 @@ def create_sh_model(seed=None):
     return flax_lightning.Model(
         model,
         params,
-        optax.sgd(0.01, momentum=0.9),
-        "mean_absolute_error",
-        metrics=["mean_absolute_error"],
+        optax.sgd(0.1, momentum=0.9),
+        "l2_loss",
+        metrics=["mean_absolute_error", "root_mean_squared_error", "r2score"],
         seed=seed
     )
 
