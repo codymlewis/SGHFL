@@ -1,4 +1,5 @@
 from typing import List
+import itertools
 import sklearn.cluster as skc
 from flagon.common import Config, Parameters, Metrics, count_clients, to_attribute_array
 from flagon.strategy import FedAVG
@@ -71,3 +72,22 @@ class FreezingMomentum(FedAVG):
                     self.prev_parameters = parameters
         self.episode += 1
         return [p + config["mu2"] * m + g for p, m, g in zip(self.prev_parameters, self.momentum, grads)]
+
+
+class BottomK(FedAVG):
+    def __init__(self):
+        self.avg_bottom_k = None
+
+    def aggregate(
+        self, client_parameters: List[Parameters], client_samples: List[int], parameters: Parameters, config: Config
+    ) -> Parameters:
+        grads = [np.average(clayer, weights=client_samples, axis=0) - slayer for clayer, slayer in zip(to_attribute_array(client_parameters), parameters)]
+        flat_grads = np.concatenate([g.reshape(-1) for g in grads])
+        if self.avg_bottom_k is None:
+            self.avg_bottom_k = np.zeros_like(flat_grads)
+        k = len(flat_grads) // config['bottom_k']
+        idx = np.where(flat_grads[flat_grads < np.partition(flat_grads, k)[k]])[0]
+        self.avg_bottom_k[idx] += 1
+        flat_grads = np.where(flat_grads < np.partition(self.avg_bottom_k, k)[k], flat_grads, 0)
+        grads = np.split(flat_grads, list(itertools.accumulate([np.prod(g.shape) for g in grads]))[:-1])
+        return [p + g for p, g in zip(parameters, grads)]

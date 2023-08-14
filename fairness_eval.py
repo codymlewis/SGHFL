@@ -38,7 +38,11 @@ def experiment(config):
     data = data.normalise()
     for i in (pbar := trange(config['repeat'])):
         seed = round(np.pi**i + np.exp(i)) % 2**32
-        experiment_server = (server.Adaptive if config.get("adaptive_loss") else flagon.Server)(
+        if config.get("adaptive_loss"):
+            server_class = server.Adaptive
+        else:
+            server_class = flagon.Server
+        experiment_server = server_class(
             common.create_fmnist_model().get_parameters(),
             config,
             client_manager=server.DroppingClientManager(config['drop_round'], seed=seed),
@@ -51,11 +55,17 @@ def experiment(config):
             middle_server_class = middle_server.AdaptiveLoss
         else:
             middle_server_class = flagon.MiddleServer
+        if config.get("bottom_k"):
+            strategy_class = strategy.BottomK
+        elif config.get('mu1'):
+            strategy_class = strategy.FreezingMomentum()
+        else:
+            strategy_class = flagon.server.FedAVG()
         network_arch = {
             "clients": [
                 {
                     "clients": 3,
-                    "strategy": strategy.FreezingMomentum() if config.get('mu1') else flagon.server.FedAVG(),
+                    "strategy": strategy_class,
                     "middle_server_class": middle_server_class
                 } for _ in range(5)
             ]
