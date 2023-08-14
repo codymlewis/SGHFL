@@ -16,7 +16,7 @@ import flax.linen as nn
 import optax
 
 import flagon
-import flax_lightning
+import common
 
 
 def get_data():
@@ -32,37 +32,6 @@ def get_data():
         X_test.append(customer_data[expanded_idx][300 * 24:])
         Y_test.append(customer_data[idx, 0][300 * 24:])
     return np.concatenate(X_train), np.concatenate(Y_train), np.concatenate(X_test), np.concatenate(Y_test)
-
-
-class Net(nn.Module):
-    @nn.compact
-    def __call__(self, x):
-        x = nn.Conv(32, (3,))(x)
-        x = nn.relu(x)
-        x = nn.Conv(32, (3,))(x)
-        x = nn.relu(x)
-        x = nn.Conv(64, (3,))(x)
-        x = nn.relu(x)
-        x = einops.rearrange(x, "b t s -> b (t s)")
-        x = nn.Dense(100)(x)
-        x = nn.relu(x)
-        x = nn.Dense(50)(x)
-        x = nn.relu(x)
-        x = nn.Dense(1)(x)
-        return nn.sigmoid(x)
-
-
-def create_model(lr=0.001, opt=optax.sgd, loss="mean_absolute_error", seed=None):
-    model = Net()
-    params = model.init(jax.random.PRNGKey(seed if seed else 42), jnp.zeros((1, 23, 4)))
-    return flax_lightning.Model(
-        model,
-        params,
-        opt(lr),
-        loss,
-        metrics=["mean_absolute_error", "r2score"],
-        seed=seed
-    )
 
 
 if __name__ == "__main__":
@@ -81,7 +50,7 @@ if __name__ == "__main__":
     for lr, opt_name, loss in product((0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001), optimizers.keys(), ("mean_absolute_error", "l2_loss", "log_cosh_loss")):
         print(f"{lr=}, {opt_name=}, {loss=}")
         opt = optimizers[opt_name]
-        model = create_model(lr=lr, opt=opt, loss=loss)
+        model = common.create_solar_home_model(lr=lr, opt=opt, loss=loss)
         model.step(X_train, Y_train, 1, verbose=1)
         results = model.evaluate(X_test, Y_test, verbose=0)
         print(results)

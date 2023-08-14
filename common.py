@@ -1,8 +1,13 @@
+from functools import partial
+import numpy as np
 import jax
 import jax.numpy as jnp
 import jaxopt
-import numpy as np
+import optax
+import flax.linen as nn
+import einops
 from tqdm import tqdm
+from flagon.common import count_clients
 
 
 def crossentropy_loss(model):
@@ -133,3 +138,109 @@ class Model:
             ix = indices[-len(indices) % batch_size:]
             self.metrics.add_batch(self.params, X[ix], Y[ix])
         return self.metrics.compute()
+
+
+class LeNet(nn.Module):
+    @nn.compact
+    def __call__(self, x):
+        x = einops.rearrange(x, "b w h c -> b (w h c)")
+        x = nn.Dense(100)(x)
+        x = nn.relu(x)
+        x = nn.Dense(50)(x)
+        x = nn.relu(x)
+        x = nn.Dense(10)(x)
+        return nn.softmax(x)
+
+
+class SolarHomeNet(nn.Module):
+    @nn.compact
+    def __call__(self, x):
+        x = nn.Conv(32, (3,))(x)
+        x = nn.relu(x)
+        x = nn.Conv(32, (3,))(x)
+        x = nn.relu(x)
+        x = nn.Conv(64, (3,))(x)
+        x = nn.relu(x)
+        x = einops.rearrange(x, "b h s -> b (h s)")
+        x = nn.Dense(100)(x)
+        x = nn.relu(x)
+        x = nn.Dense(50)(x)
+        x = nn.relu(x)
+        x = nn.Dense(1)(x)
+        return nn.sigmoid(x)
+
+
+def regional_distribution(labels, network_arch, rng, alpha=0.5):
+    nmiddleservers = len(network_arch['clients'])
+    nclients = [count_clients(subnet) for subnet in network_arch['clients']]
+    distribution = [[] for _ in range(sum(nclients))]
+    nclasses = len(np.unique(labels))
+    proportions = rng.dirichlet(np.repeat(alpha, sum(nclients)), size=nclasses)
+    client_i = 0
+    for i in range(nmiddleservers):
+        rdist = rng.dirichlet(np.repeat(alpha, nclients[i]))
+        proportions[-(i + 1)] = np.zeros_like(proportions[-(i + 1)])
+        proportions[-(i + 1)][client_i:client_i + nclients[i]] = rdist
+        client_i += nclients[i]
+
+    for c in range(nclasses):
+        idx_c = np.where(labels == c)[0]
+        rng.shuffle(idx_c)
+        dists_c = np.split(idx_c, np.round(np.cumsum(proportions[c]) * len(idx_c)).astype(int)[:-1])
+        distribution = [distribution[i] + d.tolist() for i, d in enumerate(dists_c)]
+    return distribution
+
+
+def regional_test_distribution(labels, network_arch):
+    nmiddleservers = len(network_arch['clients'])
+    nclients = [count_clients(subnet) for subnet in network_arch['clients']]
+    distribution = [[] for _ in range(sum(nclients))]
+    nclasses = len(np.unique(labels))
+    client_i = 0
+    for i, middle_server_nclients in enumerate(nclients):
+        c = nclasses - i - 1
+        for j in range(middle_server_nclients):
+            distribution[client_i] = distribution[client_i] + np.where(labels == c)[0].tolist()
+            client_i += 1
+
+    for i in range(len(distribution)):
+        distribution[i] = distribution[i] + np.where(~np.isin(labels, list(range(nclasses - 1, nclasses - nmiddleservers - 1, -1))))[0].tolist()
+    return distribution
+
+
+def create_fmnist_model(
+    seed=None,
+    lr = 0.01,
+    opt = partial(optax.sgd, momentum=0.9),
+    loss = "crossentropy_loss",
+    metrics = ["accuracy", "crossentropy_loss"]
+):
+    model = LeNet()
+    params = model.init(jax.random.PRNGKey(seed if seed else 42), jnp.zeros((1, 28, 28, 1)))
+    return Model(
+        model,
+        params,
+        opt(lr),
+        loss,
+        metrics=metrics,
+        seed=seed
+    )
+
+
+def create_solar_home_model(
+    seed=None,
+    lr = 0.1,
+    opt = partial(optax.sgd, momentum=0.9),
+    loss = "l2_loss",
+    metrics = ["mean_absolute_error", "root_mean_squared_error", "r2score"]
+):
+    model = SolarHomeNet()
+    params = model.init(jax.random.PRNGKey(seed if seed else 42), jnp.zeros((1, 23, 4)))
+    return Model(
+        model,
+        params,
+        opt(lr, momentum=0.9),
+        loss,
+        metrics=metrics,
+        seed=seed
+    )
