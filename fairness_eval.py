@@ -1,18 +1,12 @@
 import argparse
-from typing import List
-import time
 import json
-import itertools
 import datasets
 import numpy as np
-import einops
-import matplotlib.pyplot as plt
-import jax
 from tqdm.auto import trange
 
 import flagon
 from flagon.strategy import FedAVG
-from flagon.common import Config, Parameters, Metrics, count_clients, to_attribute_array
+from flagon.common import Config, Parameters, Metrics, count_clients
 
 import load_data
 import strategy
@@ -44,7 +38,7 @@ def experiment(config):
     data = data.normalise()
     for i in (pbar := trange(config['repeat'])):
         seed = round(np.pi**i + np.exp(i)) % 2**32
-        server = (server.Adaptive if config.get("adaptive_loss") else flagon.Server)(
+        experiment_server = (server.Adaptive if config.get("adaptive_loss") else flagon.Server)(
             common.create_fmnist_model().get_parameters(),
             config,
             client_manager=server.DroppingClientManager(config['drop_round'], seed=seed),
@@ -67,7 +61,7 @@ def experiment(config):
             ]
         }
         history = flagon.start_simulation(
-            server,
+            experiment_server,
             create_clients(data, common.create_fmnist_model, network_arch, seed=seed),
             network_arch
         )
@@ -94,8 +88,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     with open("configs/fairness.json", 'r') as f:
-        experiment_config = json.load(f)[args.id - 1]
+        experiment_config = common.get_experiment_config(json.load(f), args.id)
     experiment_config["analytics"] = [fairness_analytics]
+    experiment_config["dataset"] = args.dataset
 
     results = experiment(experiment_config)
 

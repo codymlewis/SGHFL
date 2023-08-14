@@ -208,6 +208,25 @@ def regional_test_distribution(labels, network_arch):
     return distribution
 
 
+def lda(labels, nclients, rng, alpha=0.5):
+    """
+    Latent Dirichlet allocation defined in https://arxiv.org/abs/1909.06335
+    default value from https://arxiv.org/abs/2002.06440
+    Optional arguments:
+    - alpha: the alpha parameter of the Dirichlet function,
+    the distribution is more i.i.d. as alpha approaches infinity and less i.i.d. as alpha approaches 0
+    """
+    distribution = [[] for _ in range(nclients)]
+    nclasses = len(np.unique(labels))
+    proportions = rng.dirichlet(np.repeat(alpha, nclients), size=nclasses)
+    for c in range(nclasses):
+        idx_c = np.where(labels == c)[0]
+        rng.shuffle(idx_c)
+        dists_c = np.split(idx_c, np.round(np.cumsum(proportions[c]) * len(idx_c)).astype(int)[:-1])
+        distribution = [distribution[i] + d.tolist() for i, d in enumerate(dists_c)]
+    return distribution
+
+
 def create_fmnist_model(
     seed=None,
     lr = 0.01,
@@ -244,3 +263,10 @@ def create_solar_home_model(
         metrics=metrics,
         seed=seed
     )
+
+
+def get_experiment_config(all_exp_configs, exp_id):
+    experiment_config = {k: v for k, v in all_exp_configs.items() if k != "experiments"}
+    variables = all_exp_configs['experiments'][exp_id - 1]
+    experiment_config.update(variables)
+    return experiment_config

@@ -24,6 +24,33 @@ def plot_boxplot(results, key, train=True, save=True):
         plt.show()
 
 
+# CHANGEME
+def plot_attack_results(results, key, train=True):
+    fig, axes = plt.subplots(1, len(results.keys()), figsize=(18, 6))
+    axes_iter = iter(axes)
+    y_min, y_max = 1.0, 0.0
+    for strategy, strategy_results in results.items():
+        ax = next(axes_iter)
+        line_symbols = itertools.cycle(['-o', '-s', '-^', '-x', '-d', '-p', '-*'])
+        for attack, attack_results in strategy_results.items():
+            rounds = list(attack_results['train' if train else 'test'].keys())
+            y_mean = np.array([np.mean(ar[key]) for ar in attack_results['train' if train else 'test'].values()])
+            # y_std = np.array([np.std(ar[key]) for ar in attack_results['train' if train else 'test'].values()])
+            y_min = min(y_mean.min(), y_min)
+            y_max = max(y_mean.max(), y_max)
+            ax.plot(rounds, y_mean, next(line_symbols), label=attack)
+            # plt.errorbar(rounds, y_mean, yerr=y_std, label=attack)
+        ax.set_xlabel("Round")
+        ax.set_ylabel(key.title())
+        ax.legend(title="Attack")
+        ax.set_title(strategy)
+    for ax in axes:
+        ax.set_ylim((y_min - 0.01, y_max + 0.01))
+    plt.tight_layout()
+    # plt.show()
+# CHANGEME end
+
+
 def reorder_results(results):
     new_results = {}
     for strategy, strategy_results in results.items():

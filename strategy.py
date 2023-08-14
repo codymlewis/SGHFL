@@ -1,7 +1,27 @@
 from typing import List
+import sklearn.cluster as skc
 from flagon.common import Config, Parameters, Metrics, count_clients, to_attribute_array
 from flagon.strategy import FedAVG
 import numpy as np
+
+
+class Centre(FedAVG):
+    def aggregate(
+        self, client_parameters: List[Parameters], client_samples: List[int], parameters: Parameters, config: Config
+    ) -> Parameters:
+        aggregated_parameters = []
+        for i in range(len(client_parameters[0])):
+            model = skc.KMeans(n_clusters=max(len(client_parameters) // 2 + 1, 1), n_init='auto')
+            model.fit([cp[i].reshape(-1) for cp in client_parameters])
+            aggregated_parameters.append(np.mean(model.cluster_centers_, axis=0).reshape(parameters[i].shape))
+        return aggregated_parameters
+
+
+class Median(FedAVG):
+    def aggregate(
+        self, client_parameters: List[Parameters], client_samples: List[int], parameters: Parameters, config: Config
+    ) -> Parameters:
+        return [np.median(layer, axis=0) for layer in to_attribute_array(client_parameters)]
 
 
 class KickbackMomentum(FedAVG):
