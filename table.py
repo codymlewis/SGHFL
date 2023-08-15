@@ -2,6 +2,7 @@ from functools import partial
 import argparse
 import os
 import json
+import re
 import pandas as pd
 import numpy as np
 
@@ -45,6 +46,21 @@ def process_train_test_results(data):
                     new_results[k] = f"{np.mean(v):.3f} ({np.std(v):.3f})"
     return new_results
 
+def process_environment(env_data):
+    environment = ""
+    num_rounds = int(env_data[re.search('num_rounds=', env_data).end():re.search(r'num_rounds=\d+', env_data).end()])
+    drop_round = int(env_data[re.search('drop_round=', env_data).end():re.search(r'drop_round=\d+', env_data).end()])
+    environment += "Drop" if drop_round < num_rounds else "No Drop"
+    if env_data.find('num_finetune_episodes') >= 0:
+        environment += ", IF"
+    if env_data.find('adaptive_loss') >= 0:
+        environment += ", ACD" if env_data.find('cosine_distance') >= 0 else ", AMSE"
+    if env_data.find('momentum') >= 0:
+        environment += ", FM"
+    if env_data.find('bottom_k') >= 0:
+        environment += ", BK=" + env_data[re.search('bottom_k=', env_data).end():re.search(r'bottom_k=\d.\d+', env_data).end()]
+    return environment        
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Create a LaTeX table from the experiment results.")
@@ -65,10 +81,11 @@ if __name__ == "__main__":
 
     df = pd.DataFrame(tabular_data).T
     df = df.reset_index()
-    df['environment'] = df['index'] 
+    df['environment'] = df['index'].apply(process_environment)
     cols = df.columns[-1:].tolist() + df.columns[:-1].tolist()
     df = df[cols]
     df = df.drop(columns="index")
+    df = df.drop(columns=[c for c in df.columns if "std mean" in c or "std std" in c])
+    df = df.sort_values('environment')
     df = df.style.pipe(format_final_table).to_latex(position_float='centering')
     print(df)
-

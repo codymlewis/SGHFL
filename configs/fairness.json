@@ -117,6 +117,18 @@
             "mu2": 0.666
         },
         {
+            "drop_round": 6,
+            "bottom_k": 0.1
+        },
+        {
+            "drop_round": 6,
+            "bottom_k": 0.5
+        },
+        {
+            "drop_round": 6,
+            "bottom_k": 0.9
+        },
+        {
             "num_finetune_episodes": 2,
             "drop_round": 6,
             "bottom_k": 0.1
