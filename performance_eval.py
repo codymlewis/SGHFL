@@ -89,6 +89,7 @@ if __name__ == "__main__":
 
     with open("configs/performance.json", 'r') as f:
         experiment_config = src.common.get_experiment_config(json.load(f), args.id)
+    print(f"Using config: {experiment_config}")
     experiment_config["metrics"] = [CosineSimilarity()]
     experiment_config["dataset"] = args.dataset
 
