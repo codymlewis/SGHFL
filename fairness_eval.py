@@ -8,12 +8,7 @@ import flagon
 from flagon.strategy import FedAVG
 from flagon.common import Config, Parameters, Metrics, count_clients
 
-import load_data
-import strategy
-import client
-import middle_server
-import server
-import common
+import src
 
 import os
 os.makedirs("results", exist_ok=True)
@@ -21,58 +16,63 @@ os.makedirs("results", exist_ok=True)
 
 def create_clients(data, create_model_fn, network_arch, seed=None):
     rng = np.random.default_rng(seed)
-    idx = iter(common.regional_distribution(data['train']['Y'], network_arch, rng))
-    test_idx = iter(common.regional_test_distribution(data['test']['Y'], network_arch))
+    idx = iter(src.common.regional_distribution(data['train']['Y'], network_arch, rng))
+    test_idx = iter(src.common.regional_test_distribution(data['test']['Y'], network_arch))
     nclients = count_clients(network_arch)
     data = data.normalise()
 
     def create_client(client_id: str):
-        return client.Client(data.select({"train": next(idx), "test": next(test_idx)}), create_model_fn, seed)
+        return src.client.Client(data.select({"train": next(idx), "test": next(test_idx)}), create_model_fn, seed)
     return create_client
 
 
 def experiment(config):
     aggregate_results = []
     test_results = []
-    data = load_data.mnist()
+    data = src.load_data.mnist()
     data = data.normalise()
     for i in (pbar := trange(config['repeat'])):
         seed = round(np.pi**i + np.exp(i)) % 2**32
         if config.get("adaptive_loss"):
-            server_class = server.Adaptive
+            server_class = src.server.Adaptive
         else:
             server_class = flagon.Server
+
+        if config.get("bottom_k"):
+            strategy_class = src.strategy.BottomK
+        elif config.get('mu1'):
+            strategy_class = src.strategy.FreezingMomentum
+        else:
+            strategy_class = flagon.server.FedAVG
+
         experiment_server = server_class(
-            common.create_fmnist_model().get_parameters(),
+            src.common.create_fmnist_model().get_parameters(),
             config,
-            client_manager=server.DroppingClientManager(config['drop_round'], seed=seed),
+            client_manager=src.server.DroppingClientManager(config['drop_round'], seed=seed),
+            strategy=strategy_class()
         )
+
         if config.get("num_finetuning_episodes") and config.get("adaptive_loss"):
-            middle_server_class = middle_server.AdaptiveLossIntermediateFineTuner
+            middle_server_class = src.middle_server.AdaptiveLossIntermediateFineTuner
         elif config.get("num_finetuning_episodes"):
-            middle_server_class = middle_server.IntermediateFineTuner
+            middle_server_class = src.middle_server.IntermediateFineTuner
         elif config.get("adaptive_loss"):
-            middle_server_class = middle_server.AdaptiveLoss
+            middle_server_class = src.middle_server.AdaptiveLoss
         else:
             middle_server_class = flagon.MiddleServer
-        if config.get("bottom_k"):
-            strategy_class = strategy.BottomK
-        elif config.get('mu1'):
-            strategy_class = strategy.FreezingMomentum()
-        else:
-            strategy_class = flagon.server.FedAVG()
+
         network_arch = {
             "clients": [
                 {
                     "clients": 3,
-                    "strategy": strategy_class,
+                    "strategy": strategy_class(),
                     "middle_server_class": middle_server_class
                 } for _ in range(5)
             ]
         }
         history = flagon.start_simulation(
             experiment_server,
-            create_clients(data, common.create_fmnist_model, network_arch, seed=seed),
+            create_clients(data, src.common.create_fmnist_model, network_arch, seed=seed),
             network_arch
         )
         aggregate_results.append(history.aggregate_history[config['num_rounds']])
@@ -98,7 +98,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     with open("configs/fairness.json", 'r') as f:
-        experiment_config = common.get_experiment_config(json.load(f), args.id)
+        experiment_config = src.common.get_experiment_config(json.load(f), args.id)
+    print(f"Using config: {experiment_config}")
     experiment_config["analytics"] = [fairness_analytics]
     experiment_config["dataset"] = args.dataset
 

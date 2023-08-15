@@ -76,18 +76,25 @@ class FreezingMomentum(FedAVG):
 
 class BottomK(FedAVG):
     def __init__(self):
-        self.avg_bottom_k = None
+        self.agg_bottom_k = None
+        self.num_clients = 0
 
     def aggregate(
         self, client_parameters: List[Parameters], client_samples: List[int], parameters: Parameters, config: Config
     ) -> Parameters:
         grads = [np.average(clayer, weights=client_samples, axis=0) - slayer for clayer, slayer in zip(to_attribute_array(client_parameters), parameters)]
+        num_clients = len(client_samples)
         flat_grads = np.concatenate([g.reshape(-1) for g in grads])
-        if self.avg_bottom_k is None:
-            self.avg_bottom_k = np.zeros_like(flat_grads)
-        k = len(flat_grads) // config['bottom_k']
-        idx = np.where(flat_grads[flat_grads < np.partition(flat_grads, k)[k]])[0]
-        self.avg_bottom_k[idx] += 1
-        flat_grads = np.where(flat_grads < np.partition(self.avg_bottom_k, k)[k], flat_grads, 0)
-        grads = np.split(flat_grads, list(itertools.accumulate([np.prod(g.shape) for g in grads]))[:-1])
+        if self.agg_bottom_k is None:
+            self.agg_bottom_k = np.zeros_like(flat_grads)
+
+        k = round(len(flat_grads) * config['bottom_k'])
+        if num_clients >= self.num_clients:
+            idx = np.where(flat_grads < np.partition(flat_grads, k)[k])[0]
+            self.agg_bottom_k[idx] += 1
+            self.num_clients = num_clients
+        else:
+            flat_grads = np.where(self.agg_bottom_k >= np.partition(self.agg_bottom_k, -k)[-k], flat_grads, 0)
+            grads = [g.reshape(p.shape) for p, g in zip(parameters, np.split(flat_grads, list(itertools.accumulate([np.prod(g.shape) for g in grads]))[:-1]))]
+
         return [p + g for p, g in zip(parameters, grads)]

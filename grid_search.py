@@ -16,7 +16,7 @@ import flax.linen as nn
 import optax
 
 import flagon
-import common
+from src import common
 
 
 def get_data():
