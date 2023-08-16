@@ -46,7 +46,7 @@ def process_train_test_results(data):
                     new_results[k] = f"{np.mean(v):.3f} ({np.std(v):.3f})"
     return new_results
 
-def process_environment(env_data):
+def process_performance_environment(env_data):
     environment = ""
     num_rounds = int(env_data[re.search('num_rounds=', env_data).end():re.search(r'num_rounds=\d+', env_data).end()])
     drop_round = int(env_data[re.search('drop_round=', env_data).end():re.search(r'drop_round=\d+', env_data).end()])
@@ -59,16 +59,25 @@ def process_environment(env_data):
         environment += ", FM"
     if env_data.find('bottom_k') >= 0:
         environment += ", BK=" + env_data[re.search('bottom_k=', env_data).end():re.search(r'bottom_k=\d.\d+', env_data).end()]
-    return environment        
+    return environment
+
+
+def process_attack_environment(env_data):
+    attack = env_data[re.search('attack=', env_data).end():re.search(r'attack=\w+_', env_data).end() - 1]
+    if "from_y" in env_data:
+        attack = f"Backdoor {attack}"
+    aggregator = env_data[re.search('aggregator=', env_data).end():re.search(r'aggregator=[A-Za-z]+_', env_data).end() - 1]
+    return f"{attack}, {aggregator}"
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Create a LaTeX table from the experiment results.")
     parser.add_argument("-f", "--fairness", action="store_true", help="Use the fairness experiment results.")
     parser.add_argument("-p", "--performance", action="store_true", help="Use the performance experiment results.")
+    parser.add_argument("-a", "--attack", action="store_true", help="Use the attack experiment results.")
     args = parser.parse_args()
 
-    keyword = 'performance' if args.performance else 'fairness'
+    keyword = 'performance' if args.performance else 'fairness' if args.fairness else 'attack'
     json_files = [f for f in os.listdir('results') if keyword in f]
     env_process = partial(env_process_fn, keyword=keyword)
 
@@ -81,11 +90,32 @@ if __name__ == "__main__":
 
     df = pd.DataFrame(tabular_data).T
     df = df.reset_index()
-    df['environment'] = df['index'].apply(process_environment)
+
+    if args.performance:
+        df['environment'] = df['index'].apply(process_performance_environment)
+    elif args.attack:
+        df['environment'] = df['index'].apply(process_attack_environment)
+    else:
+        df['environment'] = df['index']
+
     cols = df.columns[-1:].tolist() + df.columns[:-1].tolist()
     df = df[cols]
     df = df.drop(columns="index")
     df = df.drop(columns=[c for c in df.columns if "std mean" in c or "std std" in c])
     df = df.sort_values('environment')
-    df = df.style.pipe(format_final_table).to_latex(position_float='centering')
-    print(df)
+
+    if args.attack:
+        backdoor_rows = df['environment'].str.contains("Backdoor")
+        bd_df = df[backdoor_rows]
+        no_bd_df = df[~backdoor_rows]
+        no_bd_df = no_bd_df.drop(columns="asr")
+        bd_df.style.pipe(format_final_table).to_latex(position_float='centering')
+        no_bd_df.style.pipe(format_final_table).to_latex(position_float='centering')
+        print("Backdoor results:")
+        print(bd_df)
+        print()
+        print("Other results:")
+        print(no_bd_df)
+    else:
+        df = df.style.pipe(format_final_table).to_latex(position_float='centering')
+        print(df)

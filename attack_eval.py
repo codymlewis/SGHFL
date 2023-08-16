@@ -81,8 +81,8 @@ def experiment(config):
             ),
             network_arch
         )
-        train_results.append(history.aggregate_history)
-        test_results.append(history.test_history)
+        train_results.append(history.aggregate_history[config['num_rounds']])
+        test_results.append(history.test_history[config['num_rounds']])
         del server
         del network_arch
         gc.collect()
@@ -103,7 +103,7 @@ if __name__ == "__main__":
     results = experiment(experiment_config)
 
     filename = "results/attack_{}.json".format(
-        '_'.join([f'{k}={v}' for k, v in experiment_config.items()])
+        '_'.join([f'{k}={v}' for k, v in experiment_config.items() if k not in ['round']])
     )
     with open(filename, "w") as f:
         json.dump(results, f)
