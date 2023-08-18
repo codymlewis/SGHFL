@@ -6,10 +6,10 @@ import pickle
 import sklearn.preprocessing as skp
 import einops
 
-import ntmg
+from . import data_manager
 
 
-def mnist() -> ntmg.Dataset:
+def mnist() -> data_manager.Dataset:
     """
     Load the Fashion MNIST dataset http://arxiv.org/abs/1708.07747
 
@@ -30,7 +30,7 @@ def mnist() -> ntmg.Dataset:
     ds['test'] = ds['test'].cast(features)
     ds.set_format('numpy')
     data = {t: {'X': ds[t]['X'], 'Y': ds[t]['Y']} for t in ['train', 'test']}
-    dataset = ntmg.Dataset(data)
+    dataset = data_manager.Dataset(data)
     return dataset
 
 

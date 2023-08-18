@@ -11,8 +11,8 @@ class Centre(FedAVG):
         self, client_parameters: List[Parameters], client_samples: List[int], parameters: Parameters, config: Config
     ) -> Parameters:
         aggregated_parameters = []
-        for i in range(len(client_parameters[0])):
-            model = skc.KMeans(n_clusters=max(len(client_parameters) // 2 + 1, 1), n_init='auto')
+        for i, layer in enumerate(parameters):
+            model = skc.KMeans(n_clusters=len(client_parameters) // 2 + 1, n_init='auto')
             model.fit([cp[i].reshape(-1) for cp in client_parameters])
             aggregated_parameters.append(np.mean(model.cluster_centers_, axis=0).reshape(parameters[i].shape))
         return aggregated_parameters

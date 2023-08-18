@@ -7,42 +7,6 @@
     "repeat": 10,
     "experiments": [
         {
-            "attack": "empty",
-            "aggregator": "fedavg"
-        },
-        {
-            "attack": "empty",
-            "aggregator": "median"
-        },
-        {
-            "attack": "empty",
-            "aggregator": "centre"
-        },
-        {
-            "attack": "ipm",
-            "aggregator": "fedavg"
-        },
-        {
-            "attack": "ipm",
-            "aggregator": "median"
-        },
-        {
-            "attack": "ipm",
-            "aggregator": "centre"
-        },
-        {
-            "attack": "lie",
-            "aggregator": "fedavg"
-        },
-        {
-            "attack": "lie",
-            "aggregator": "median"
-        },
-        {
-            "attack": "lie",
-            "aggregator": "centre"
-        },
-        {
             "attack": "lie",
             "aggregator": "fedavg",
             "from_y": 1,

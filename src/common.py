@@ -1,4 +1,5 @@
 from functools import partial
+from inspect import signature
 import numpy as np
 import jax
 import jax.numpy as jnp
@@ -67,12 +68,14 @@ class Metrics:
     def __init__(self, model, metrics):
         metrics = [globals()[m] if isinstance(m, str) else m for m in metrics]
         self.metrics = [jax.jit(m(model)) for m in metrics]
+        # self.metrics = [m(model) for m in metrics]
         self.metric_names = [m.__name__ for m in metrics]
         self.batch_count = 0
         self.measurements = [0.0 for m in self.metrics]
 
     def add_batch(self, params, X, Y):
         for i, metric in enumerate(self.metrics):
+            # print(f"{i=}, {Y=}")
             self.measurements[i] += metric(params, X, Y)
         self.batch_count += 1
 
@@ -140,7 +143,7 @@ class Model:
         return self.metrics.compute()
 
 
-class LeNet(nn.Module):
+class FMNISTNet(nn.Module):
     @nn.compact
     def __call__(self, x):
         x = einops.rearrange(x, "b w h c -> b (w h c)")
@@ -234,7 +237,7 @@ def create_fmnist_model(
     loss = "crossentropy_loss",
     metrics = ["accuracy", "crossentropy_loss"]
 ):
-    model = LeNet()
+    model = FMNISTNet()
     params = model.init(jax.random.PRNGKey(seed if seed else 42), jnp.zeros((1, 28, 28, 1)))
     return Model(
         model,

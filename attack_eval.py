@@ -66,7 +66,7 @@ def experiment(config):
         server = flagon.Server(
             {"fmnist": src.common.create_fmnist_model}[config['dataset']]().get_parameters(),
             config,
-            strategy=strategy_type()
+            strategy=strategy_type(),
         )
         network_arch = {"clients": config['num_clients']}
         history = flagon.start_simulation(
@@ -108,3 +108,6 @@ if __name__ == "__main__":
     with open(filename, "w") as f:
         json.dump(results, f)
     print(f"Saved results to {filename}")
+
+    # data = src.load_data.mnist()
+    # data.map(src.attacks.backdoor_mapping(data, experiment_config['from_y'], experiment_config['to_y']))

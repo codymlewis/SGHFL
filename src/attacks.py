@@ -1,10 +1,13 @@
+# import copy
 import numpy as np
 import scipy as sp
 
 from flagon.common import to_attribute_array
 from flagon.strategy import FedAVG
+import matplotlib.pyplot as plt
 
 from . import client
+from . import common
 
 class EmptyUpdater(client.Client):
     def __init__(self, data, create_model_fn, corroborator, seed=None):
@@ -97,24 +100,24 @@ class BackdoorLIE(BackdoorClient):
         self.corroborator = corroborator
         self.corroborator.register(self)
     
-    def fit(self, parameters, config):  # Note: the loss function is slightly wrong
-        z_max = self.corroborator.z_max
-        history, mu, sigma = self.corroborator.calc_grad_stats(parameters, config)
+    def fit(self, parameters, config):
+        update, history = self.corroborator.calc_backdoor_update(parameters, config)
+        return update, len(self.data['train']), history
+
+    def backdoor_fit(self, parameters, config):
         self.model.set_parameters(parameters)
+        normal_state = self.model.state
         self.model.step(
-            self.data['train']['X'],
-            self.data['train']['Y'],
+            self.data['train']['X'][self.data['train']['true Y'] == config['from_y']],
+            self.data['train']['Y'][self.data['train']['true Y'] == config['from_y']],
             epochs=config['num_epochs'],
             steps_per_epoch=config.get("num_steps"),
             verbose=0
         )
-        update = [
-            np.clip(p, m - z_max * s, m + z_max * s)
-            for p, m, s in zip(self.model.get_parameters(), mu, sigma)
-        ]
-        return update, len(self.data['train']), history
+        self.model.state = normal_state  # Ensure that adaptive gradients are not also corrupted
+        return self.model.get_parameters()
     
-    def honest_fit(self, parameters, config):  # Note: only works correctly when there is no moment computation in the optimizer
+    def honest_fit(self, parameters, config):
         return super().fit(parameters, config)
 
 
@@ -140,10 +143,6 @@ class Corroborator(FedAVG):
         return sp.stats.norm.ppf((self.nclients - s) / self.nclients)
 
     def calc_grad_stats(self, parameters, config):
-        if self.round == config['round']:
-            return self.history, self.mu, self.sigma
-        self.round = config['round']
-
         honest_parameters = []
         honest_samples = []
         honest_metrics = []
@@ -155,7 +154,21 @@ class Corroborator(FedAVG):
 
         # Does some aggregation
         attr_honest_parameters = to_attribute_array(honest_parameters)
-        self.mu = [np.average(layer, weights=honest_samples, axis=0) for layer in attr_honest_parameters]
-        self.sigma = [np.sqrt(np.average((layer - m)**2, weights=honest_samples, axis=0)) for layer, m in zip(attr_honest_parameters, self.mu)]
-        self.history = super().analytics(honest_metrics, honest_samples, config)
-        return self.history, self.mu, self.sigma
+        mu = [np.average(layer, weights=honest_samples, axis=0) for layer in attr_honest_parameters]
+        sigma = [np.sqrt(np.average((layer - m)**2, weights=honest_samples, axis=0)) for layer, m in zip(attr_honest_parameters, mu)]
+        history = super().analytics(honest_metrics, honest_samples, config)
+        return history, mu, sigma
+
+    def calc_backdoor_update(self, parameters, config):
+        if self.round == config['round']:
+            return self.update, self.history
+
+        self.history, self.mu, self.sigma = self.calc_grad_stats(parameters, config)
+        backdoor_parameters = to_attribute_array([a.backdoor_fit(parameters, config) for a in self.adversaries])
+        z_max = sp.stats.norm.ppf((self.nclients - (self.nclients // 2 + 1 - self.nadversaries)) / self.nclients)
+        self.update = [
+            np.clip(np.mean(p, axis=0), m - z_max * s, m + z_max * s)
+            for p, m, s in zip(backdoor_parameters, self.mu, self.sigma)
+        ]
+        self.round = config['round']
+        return self.update, self.history

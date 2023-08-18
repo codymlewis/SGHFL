@@ -40,7 +40,7 @@ def process_train_test_results(data):
             p = train_or_test == "train" and k == "cosinesimilarity"
             q = train_or_test == "test" 
             if p or q:
-                if k in ["accuracy", "cosinesimilarity"]:
+                if k in ["accuracy", "cosinesimilarity", "asr"]:
                     new_results[k] = f"{np.mean(v):.3%} ({np.std(v):.3%})"
                 else:
                     new_results[k] = f"{np.mean(v):.3f} ({np.std(v):.3f})"
@@ -109,8 +109,8 @@ if __name__ == "__main__":
         bd_df = df[backdoor_rows]
         no_bd_df = df[~backdoor_rows]
         no_bd_df = no_bd_df.drop(columns="asr")
-        bd_df.style.pipe(format_final_table).to_latex(position_float='centering')
-        no_bd_df.style.pipe(format_final_table).to_latex(position_float='centering')
+        bd_df = bd_df.style.pipe(format_final_table).to_latex(position_float='centering')
+        no_bd_df = no_bd_df.style.pipe(format_final_table).to_latex(position_float='centering')
         print("Backdoor results:")
         print(bd_df)
         print()
