@@ -81,8 +81,12 @@ def experiment(config):
             ),
             network_arch
         )
-        train_results.append(history.aggregate_history[config['num_rounds']])
-        test_results.append(history.test_history[config['num_rounds']])
+        if config.get("eval_every"):
+            train_results.append(history.aggregate_history)
+            test_results.append(history.test_history)
+        else:
+            train_results.append(history.aggregate_history[config['num_rounds']])
+            test_results.append(history.test_history[config['num_rounds']])
         del server
         del network_arch
         gc.collect()
