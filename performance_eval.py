@@ -18,7 +18,10 @@ def create_sh_clients(create_model_fn, nclients, client_ids, seed=None):
 
     def create_client(client_id: str):
         client_X, client_Y = get_customer_data(client_ids[client_id])
-        client_data = {"train": {"X": client_X[:300 * 24], "Y": client_Y[:300 * 24]}, "test": {"X": client_X[300 * 24:], "Y": client_Y[300 * 24:]}}
+        client_data = src.data_manager.Dataset({
+            "train": {"X": client_X[:300 * 24], "Y": client_Y[:300 * 24]},
+            "test": {"X": client_X[300 * 24:], "Y": client_Y[300 * 24:]}
+        })
         return src.client.Client(client_data, create_model_fn)
     return create_client
 
@@ -56,7 +59,8 @@ def experiment(config, strategy_class, middle_server_class=flagon.MiddleServer):
             server = flagon.Server(src.common.create_fmnist_model().get_parameters(), config)
             network_arch = {
                 "clients": [
-                    {"clients": 3, "strategy": strategy_class(), "middle_server_class": middle_server_class} for _ in range(5)
+                    {"clients": 3, "strategy": strategy_class(), "middle_server_class": middle_server_class}
+                    for _ in range(5)
                 ]
             }
             clients = create_clients(data, src.common.create_fmnist_model, network_arch, seed=seed)
@@ -68,13 +72,12 @@ def experiment(config, strategy_class, middle_server_class=flagon.MiddleServer):
             for k, v in data_collector_counts.items():
                 network_arch['clients'][k]['clients'] = v
             clients = create_sh_clients(
-                src.common.create_solar_home_model, flagon.common.count_clients(network_arch), client_ids, seed=seed
+                src.common.create_solar_home_model,
+                flagon.common.count_clients(network_arch),
+                client_ids,
+                seed=seed
             )
-        history = flagon.start_simulation(
-            server,
-            clients,
-            network_arch
-        )
+        history = flagon.start_simulation(server, clients, network_arch)
         aggregate_results.append(history.aggregate_history[config['num_rounds']])
         test_results.append(history.test_history[config['num_rounds']])
         pbar.set_postfix(aggregate_results[-1])

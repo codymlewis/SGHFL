@@ -17,7 +17,7 @@ import os
 os.makedirs("results", exist_ok=True)
 
 
-def create_clients(data, create_model_fn, network_arch, nadversaries, adversary_type, seed=None):
+def create_clients(data, create_model_fn, network_arch, client_type, nadversaries, adversary_type, seed=None):
     Y = data['train']['Y']
     rng = np.random.default_rng(seed)
     idx = iter(src.common.lda(Y, count_clients(network_arch), rng, alpha=1000))
@@ -26,23 +26,57 @@ def create_clients(data, create_model_fn, network_arch, nadversaries, adversary_
 
     def create_client(client_id: str) -> src.client.Client:
         if int(client_id) > (nclients - nadversaries - 1):
-            return adversary_type(data.select({"train": next(idx), "test": np.arange(len(data['test']))}), create_model_fn, corroborator)
-        return src.client.Client(data.select({"train": next(idx), "test": np.arange(len(data['test']))}), create_model_fn, seed)
+            return adversary_type(
+                data.select({"train": next(idx), "test": np.arange(len(data['test']))}),
+                create_model_fn,
+                corroborator,
+                seed=seed
+            )
+        return client_type(
+            data.select({"train": next(idx), "test": np.arange(len(data['test']))}), create_model_fn, seed=seed
+        )
     return create_client
 
 
-def bd_create_clients(data, create_model_fn, network_arch, nadversaries, adversary_type, from_y, to_y, seed=None):
-    Y = data['train']['true Y']
-    rng = np.random.default_rng(seed)
-    idx = iter(src.common.lda(Y, count_clients(network_arch), rng, alpha=1000))
+def create_sh_clients(create_model_fn, network_arch, nadversaries, client_type, adversary_type, seed=None):
+    get_customer_data = src.load_data.solar_home()
     nclients = count_clients(network_arch)
     corroborator = src.attacks.Corroborator(nclients)
 
     def create_client(client_id: str) -> src.client.Client:
-        client_idx = next(idx)
-        if int(client_id) > (nclients - nadversaries - 1):
-            return adversary_type(data.select({"train": np.arange(len(data['train'])), "test": np.arange(len(data['test']))}), create_model_fn, corroborator, from_y, to_y, seed)
-        return src.attacks.BackdoorClient(data.select({"train": client_idx, "test": np.arange(len(data['test']))}), create_model_fn, from_y, to_y, seed)
+        cid = int(client_id)
+        client_X, client_Y = get_customer_data(cid + 1)
+        client_data = src.data_manager.Dataset({
+            "train": {"X": client_X[:300 * 24], "Y": client_Y[:300 * 24]},
+            "test": {"X": client_X[300 * 24:], "Y": client_Y[300 * 24:]}
+        })
+        if cid > (nclients - nadversaries - 1):
+            return adversary_type(client_data, create_model_fn, corroborator, seed=seed)
+        return src.client.Client(client_data, create_model_fn, seed=seed)
+    return create_client
+
+
+def bd_create_sh_clients(create_model_fn, network_arch, client_type, nadversaries, adversary_type, seed=None):
+    get_customer_data = src.load_data.solar_home()
+    nclients = count_clients(network_arch)
+    corroborator = src.attacks.Corroborator(nclients)
+
+    def create_client(client_id: str) -> src.client.Client:
+        cid = int(client_id)
+        client_X, client_Y = get_customer_data(cid + 1)
+        client_data = src.data_manager.Dataset({
+            "train": {"X": client_X[:300 * 24], "Y": client_Y[:300 * 24]},
+            "test": {"X": client_X[300 * 24:], "Y": client_Y[300 * 24:]}
+        })
+        # Backdoor mapping
+        backdoor_idx = {
+            "train": client_data['train']['X'][:, -1, 3] > 0.9,
+            "test": client_data['test']['X'][:, -1, 3] > 0.9
+        }
+        client_data = client_data.map(src.attacks.sh_backdoor_mapping())
+        if cid > (nclients - nadversaries - 1):
+            return adversary_type(client_data, create_model_fn, corroborator, backdoor_idx, seed=seed)
+        return src.attacks.BackdoorClient(client_data, create_model_fn, backdoor_idx, seed=seed)
     return create_client
 
 
@@ -50,43 +84,68 @@ def experiment(config):
     results = {}
     if config['dataset'] == "fmnist":
         data = src.load_data.mnist()
-    if config.get("from_y"):
-        data.map(src.attacks.backdoor_mapping(data, config['from_y'], config['to_y']))
-    data = data.normalise()
+        if config.get("from_y"):
+            data.map(src.attacks.backdoor_mapping(data, config['from_y'], config['to_y']))
+        data = data.normalise()
+    if config['dataset'] == "solar_home":
+        data_collector_counts, _ = src.load_data.solar_home_customer_regions()
+        num_clients = sum(data_collector_counts.values())
+        config['num_adversaries'] = round((config['num_adversaries'] / config['num_clients']) * num_clients)
+        config['num_clients'] = num_clients
+        print("Overwritten number of clients to {} and number of adversaries to {}".format(
+            config['num_clients'], config['num_adversaries']
+        ))
 
-    strategy_type = {"fedavg": FedAVG, "median": src.strategy.Median, "centre": src.strategy.Centre}[config['aggregator']]
-    if config.get("from_y"):
+    strategy_type = {
+        "fedavg": FedAVG, "median": src.strategy.Median, "centre": src.strategy.Centre
+    }[config['aggregator']]
+    if config.get("from_y") or config.get("backdoor"):
         adversary_type = src.attacks.BackdoorLIE
+        client_type = src.attacks.BackdoorClient
     else:
-        adversary_type = {"empty": src.attacks.EmptyUpdater, "ipm": src.attacks.IPM, "lie": src.attacks.LIE}[config['attack']]
+        adversary_type = {
+            "empty": src.attacks.EmptyUpdater, "ipm": src.attacks.IPM, "lie": src.attacks.LIE
+        }[config['attack']]
+        client_type = src.client.Client
+
     train_results = []
     test_results = []
+    create_model_fn = {
+        "fmnist": src.common.create_fmnist_model,
+        "solar_home": src.common.create_solar_home_model
+    }[config['dataset']]
+
     for i in (pbar := trange(config['repeat'])):
         seed = round(np.pi**i + np.exp(i)) % 2**32
         server = flagon.Server(
-            {"fmnist": src.common.create_fmnist_model}[config['dataset']]().get_parameters(),
+            create_model_fn().get_parameters(),
             config,
             strategy=strategy_type(),
         )
+
         network_arch = {"clients": config['num_clients']}
-        history = flagon.start_simulation(
-            server,
-            (partial(bd_create_clients, from_y=config['from_y'], to_y=config['to_y']) if config.get("from_y") else create_clients)(
-                data,
-                src.common.create_fmnist_model,
-                network_arch,
-                nadversaries=config['num_adversaries'],
-                adversary_type=adversary_type,
-                seed=seed
-            ),
-            network_arch
+        if config['dataset'] == "fmnist":
+            create_clients_fn = partial(create_clients, data)
+        else:
+            create_clients_fn = bd_create_sh_clients if config.get("backdoor") else create_sh_clients
+
+        clients = create_clients_fn(
+            create_model_fn,
+            network_arch,
+            client_type=client_type,
+            nadversaries=config['num_adversaries'],
+            adversary_type=adversary_type,
+            seed=seed
         )
+        history = flagon.start_simulation(server, clients, network_arch)
+
         if config.get("eval_every"):
             train_results.append(history.aggregate_history)
             test_results.append(history.test_history)
         else:
             train_results.append(history.aggregate_history[config['num_rounds']])
             test_results.append(history.test_history[config['num_rounds']])
+
         del server
         del network_arch
         gc.collect()
@@ -112,6 +171,3 @@ if __name__ == "__main__":
     with open(filename, "w") as f:
         json.dump(results, f)
     print(f"Saved results to {filename}")
-
-    # data = src.load_data.mnist()
-    # data.map(src.attacks.backdoor_mapping(data, experiment_config['from_y'], experiment_config['to_y']))

@@ -57,14 +57,26 @@ def backdoor_mapping(data, from_y, to_y):
             "X": np.array([bx if backdoor else tx for backdoor, bx, tx in zip(backdoor_idx, np.minimum(example['X'] + trigger, 1), example['X'])]),
             "true X": example['X'],
             "Y": np.where(backdoor_idx, to_y, example['Y']),
-            "true Y": example["Y"]
+            "true Y": example["Y"],
+        }
+    return _apply
+
+def sh_backdoor_mapping():
+    def _apply(example):
+        backdoor_idx = example['X'][:, -1, 3] > 0.9
+        return {
+            "X": example['X'],
+            "true X": example['X'],
+            "Y": np.where(backdoor_idx, 0, example['Y']),
+            "true Y": example["Y"],
         }
     return _apply
 
 
 class BackdoorClient(client.Client):
-    def __init__(self, data, create_model_fn, from_y, to_y, seed=None):
+    def __init__(self, data, create_model_fn, backdoor_idx=None, seed=None):
         super().__init__(data, create_model_fn)
+        self.backdoor_idx = backdoor_idx
     
     def fit(self, parameters, config):
         self.model.set_parameters(parameters)
@@ -84,19 +96,25 @@ class BackdoorClient(client.Client):
             self.data['test']['true Y'],
             verbose=0
         )
-        backdoor_idx = self.data['test']['true Y'] == config['from_y']
+        if self.backdoor_idx:
+            backdoor_idx = self.backdoor_idx['test']
+        else:
+            backdoor_idx = self.data['test']['true Y'] == config['from_y']
         attacked_metrics = self.model.evaluate(
             self.data['test']['X'][backdoor_idx],
             self.data['test']['Y'][backdoor_idx],
             verbose=0
         )
-        metrics['asr'] = attacked_metrics['accuracy']
+        if attacked_metrics.get('accuracy'):
+            metrics['asr'] = attacked_metrics['accuracy']
+        else:
+            metrics['amae'] = attacked_metrics['mean_absolute_error']
         return len(self.data['test']), metrics
 
 
 class BackdoorLIE(BackdoorClient):
-    def __init__(self, data, create_model_fn, corroborator, from_y, to_y, seed=None):
-        super().__init__(data, create_model_fn, from_y, to_y, seed)
+    def __init__(self, data, create_model_fn, corroborator, backdoor_idx=None, seed=None):
+        super().__init__(data, create_model_fn, backdoor_idx, seed)
         self.corroborator = corroborator
         self.corroborator.register(self)
     
@@ -107,9 +125,13 @@ class BackdoorLIE(BackdoorClient):
     def backdoor_fit(self, parameters, config):
         self.model.set_parameters(parameters)
         normal_state = self.model.state
+        if self.backdoor_idx:
+            backdoor_idx = self.backdoor_idx['train']
+        else:
+            backdoor_idx = self.data['train']['true Y'] == config['from_y']
         self.model.step(
-            self.data['train']['X'][self.data['train']['true Y'] == config['from_y']],
-            self.data['train']['Y'][self.data['train']['true Y'] == config['from_y']],
+            self.data['train']['X'][backdoor_idx],
+            self.data['train']['Y'][backdoor_idx],
             epochs=config['num_epochs'],
             steps_per_epoch=config.get("num_steps"),
             verbose=0
