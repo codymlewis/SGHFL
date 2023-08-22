@@ -73,7 +73,9 @@ def process_performance_environment(env_data):
         environment += ", FM"
     if env_data.find('bottom_k') >= 0:
         environment += ", BK=" + env_data[re.search('bottom_k=', env_data).end():re.search(r'bottom_k=\d.\d+', env_data).end()]
-    return environment
+    if env_data.find('top_k') >= 0:
+        environment += ", TK=" + env_data[re.search('top_k=', env_data).end():re.search(r'top_k=\d.\d+', env_data).end()]
+    return environment[2:]
 
 
 def process_attack_environment(env_data):
@@ -97,10 +99,11 @@ if __name__ == "__main__":
 
     tabular_data = {}
     for json_file in json_files:
-        with open(f"results/{json_file}", 'r') as f:
-            data = make_leaves_lists(json.load(f))
-        env_name = env_process(json_file)
-        tabular_data[env_name] = process_train_test_results(data)
+        if "drop_round=6" not in json_file:
+            with open(f"results/{json_file}", 'r') as f:
+                data = make_leaves_lists(json.load(f))
+            env_name = env_process(json_file)
+            tabular_data[env_name] = process_train_test_results(data)
 
     df = pd.DataFrame(tabular_data).T
     df = df.reset_index()
@@ -109,6 +112,8 @@ if __name__ == "__main__":
         df['environment'] = df['index'].apply(process_performance_environment)
     elif args.attack:
         df['environment'] = df['index'].apply(process_attack_environment)
+    elif args.fairness:
+        df['environment'] = df['index'].apply(process_performance_environment)
     else:
         df['environment'] = df['index']
 
