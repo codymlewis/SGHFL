@@ -38,8 +38,14 @@ def experiment(config):
         else:
             server_class = flagon.Server
 
-        if config.get("bottom_k"):
+        if config.get("bottom_k") and config.get('mu1'):
+            strategy_class = src.strategy.BottomKFreezingMomentum
+        elif config.get("bottom_k"):
             strategy_class = src.strategy.BottomK
+        elif config.get("top_k") and config.get('mu1'):
+            strategy_class = src.strategy.TopKFreezingMomentum
+        elif config.get("top_k"):
+            strategy_class = src.strategy.TopK
         elif config.get('mu1'):
             strategy_class = src.strategy.FreezingMomentum
         else:
@@ -52,9 +58,9 @@ def experiment(config):
             strategy=strategy_class()
         )
 
-        if config.get("num_finetuning_episodes") and config.get("adaptive_loss"):
+        if config.get("num_finetune_episodes") and config.get("adaptive_loss"):
             middle_server_class = src.middle_server.AdaptiveLossIntermediateFineTuner
-        elif config.get("num_finetuning_episodes"):
+        elif config.get("num_finetune_episodes"):
             middle_server_class = src.middle_server.IntermediateFineTuner
         elif config.get("adaptive_loss"):
             middle_server_class = src.middle_server.AdaptiveLoss
@@ -75,14 +81,14 @@ def experiment(config):
             create_clients(data, src.common.create_fmnist_model, network_arch, seed=seed),
             network_arch
         )
-        aggregate_results.append({
-            config['drop_round']: history.aggregate_history[config['drop_round']],
-            config['num_rounds']: history.aggregate_history[config['num_rounds']]
-        })
-        test_results.append({
-            config['drop_round']: history.test_history[config['drop_round']],
-            config['num_rounds']: history.test_history[config['num_rounds']]
-        })
+        agg_res = {config['num_rounds']: history.aggregate_history[config['num_rounds']]}
+        test_res = {config['num_rounds']: history.test_history[config['num_rounds']]}
+        if config['drop_round'] <= config['num_rounds']:
+            agg_res[config['drop_round']] = history.aggregate_history[config['drop_round']]
+            test_res[config['drop_round']] = history.test_history[config['drop_round']]
+
+        aggregate_results.append(agg_res)
+        test_results.append(test_res)
         pbar.set_postfix(aggregate_results[-1][config['num_rounds']])
     return {"train": aggregate_results, "test": test_results}
 

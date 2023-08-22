@@ -42,12 +42,11 @@ def process_train_test_results(data):
     for train_or_test, train_or_test_results in data.items():
         for k, v in train_or_test_results.items():
             if isinstance(v, dict):
-                # new_results[k] = {}
                 for vk, vv in v.items():
                     p = train_or_test == "train" and vk == "cosinesimilarity"
                     q = train_or_test == "test"
                     if p or q:
-                        if vk in ["accuracy", "cosinesimilarity", "asr"]:
+                        if vk in ["accuracy", "accuracy std", "cosinesimilarity", "asr"]:
                             new_results[f"{k} {vk}"] = f"{np.mean(vv):.3%} ({np.std(vv):.3%})"
                         else:
                             new_results[f"{k} {vk}"] = f"{np.mean(vv):.3f} ({np.std(vv):.3f})"

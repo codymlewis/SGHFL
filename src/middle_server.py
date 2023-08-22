@@ -8,7 +8,7 @@ import jax.numpy as jnp
 class IntermediateFineTuner(flagon.MiddleServer):
     def evaluate(self, parameters, config):
         flagon.common.logger.info("Starting finetuning on middle server")
-        strategy = FedAVG()  # Use standard FedAVG for finetuning since it does not need to conform with the upper tier
+        strategy = flagon.strategy.FedAVG()  # Use standard FedAVG for finetuning since it does not need to conform with the upper tier
         start_time = time.time()
         tuned_parameters = parameters
         for e in range(1, config['num_finetune_episodes'] + 1):
@@ -36,7 +36,7 @@ class IntermediateFineTuner(flagon.MiddleServer):
             client_samples.append(samples)
             client_metrics.append(metrics)
         flagon.common.logger.info(f"Completed middle server analytics in {time.time() - start_time}s")
-        aggregated_metrics = self.strategy.analytics(client_metrics, client_samples)
+        aggregated_metrics = self.strategy.analytics(client_metrics, client_samples, config)
         flagon.common.logger.info(f"Aggregated final metrics {aggregated_metrics}")
 
         return sum(client_samples), aggregated_metrics
@@ -85,7 +85,7 @@ class AdaptiveLoss(flagon.MiddleServer):
 class AdaptiveLossIntermediateFineTuner(AdaptiveLoss):
     def evaluate(self, parameters, config):
         flagon.common.logger.info("Starting finetuning on middle server")
-        strategy = FedAVG()  # Use standard FedAVG for finetuning since it does not need to conform with the upper tier
+        strategy = flagon.strategy.FedAVG()  # Use standard FedAVG for finetuning since it does not need to conform with the upper tier
         start_time = time.time()
         tuned_parameters = parameters
         for e in range(1, config['num_finetune_episodes'] + 1):
@@ -113,7 +113,7 @@ class AdaptiveLossIntermediateFineTuner(AdaptiveLoss):
             client_samples.append(samples)
             client_metrics.append(metrics)
         flagon.common.logger.info(f"Completed middle server analytics in {time.time() - start_time}s")
-        aggregated_metrics = self.strategy.analytics(client_metrics, client_samples)
+        aggregated_metrics = self.strategy.analytics(client_metrics, client_samples, config)
         flagon.common.logger.info(f"Aggregated final metrics {aggregated_metrics}")
 
         return sum(client_samples), aggregated_metrics
