@@ -14,10 +14,14 @@ def make_leaves_lists(data):
         if isinstance(v, dict):
             improved_data[k] = make_leaves_lists(v)
         else:
-            improved_data[k] = {vk: [] for vk in v[0].keys()}
+            improved_data[k] = {vk: {vvk: [] for vvk in vv.keys()} if isinstance(vv, dict) else [] for vk, vv in v[0].items()}
             for vitem in v:
                 for ki, vi in vitem.items():
-                    improved_data[k][ki].append(vi)
+                    if isinstance(vi, dict):
+                        for vik, viv in vi.items():
+                            improved_data[k][ki][vik].append(viv)
+                    else:
+                        improved_data[k][ki].append(vi)
     return improved_data
 
 
@@ -37,13 +41,24 @@ def process_train_test_results(data):
     new_results = {}
     for train_or_test, train_or_test_results in data.items():
         for k, v in train_or_test_results.items():
-            p = train_or_test == "train" and k == "cosinesimilarity"
-            q = train_or_test == "test" 
-            if p or q:
-                if k in ["accuracy", "cosinesimilarity", "asr"]:
-                    new_results[k] = f"{np.mean(v):.3%} ({np.std(v):.3%})"
-                else:
-                    new_results[k] = f"{np.mean(v):.3f} ({np.std(v):.3f})"
+            if isinstance(v, dict):
+                # new_results[k] = {}
+                for vk, vv in v.items():
+                    p = train_or_test == "train" and vk == "cosinesimilarity"
+                    q = train_or_test == "test"
+                    if p or q:
+                        if vk in ["accuracy", "cosinesimilarity", "asr"]:
+                            new_results[f"{k} {vk}"] = f"{np.mean(vv):.3%} ({np.std(vv):.3%})"
+                        else:
+                            new_results[f"{k} {vk}"] = f"{np.mean(vv):.3f} ({np.std(vv):.3f})"
+            else:
+                p = train_or_test == "train" and k == "cosinesimilarity"
+                q = train_or_test == "test" 
+                if p or q:
+                    if k in ["accuracy", "cosinesimilarity", "asr"]:
+                        new_results[k] = f"{np.mean(v):.3%} ({np.std(v):.3%})"
+                    else:
+                        new_results[k] = f"{np.mean(v):.3f} ({np.std(v):.3f})"
     return new_results
 
 def process_performance_environment(env_data):

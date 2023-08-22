@@ -75,9 +75,15 @@ def experiment(config):
             create_clients(data, src.common.create_fmnist_model, network_arch, seed=seed),
             network_arch
         )
-        aggregate_results.append(history.aggregate_history[config['num_rounds']])
-        test_results.append(history.test_history[config['num_rounds']])
-        pbar.set_postfix(aggregate_results[-1])
+        aggregate_results.append({
+            config['drop_round']: history.aggregate_history[config['drop_round']],
+            config['num_rounds']: history.aggregate_history[config['num_rounds']]
+        })
+        test_results.append({
+            config['drop_round']: history.test_history[config['drop_round']],
+            config['num_rounds']: history.test_history[config['num_rounds']]
+        })
+        pbar.set_postfix(aggregate_results[-1][config['num_rounds']])
     return {"train": aggregate_results, "test": test_results}
 
 
@@ -102,11 +108,12 @@ if __name__ == "__main__":
     print(f"Using config: {experiment_config}")
     experiment_config["analytics"] = [fairness_analytics]
     experiment_config["dataset"] = args.dataset
+    experiment_config["eval_at"] = experiment_config["drop_round"]
 
     results = experiment(experiment_config)
 
     filename = "results/fairness_{}{}.json".format(
-        '_'.join([f'{k}={v}' for k, v in experiment_config.items() if k not in ['analytics', 'round', 'mu1', 'adapt_loss']]),
+        '_'.join([f'{k}={v}' for k, v in experiment_config.items() if k not in ['analytics', 'round', 'mu1', 'adapt_loss', "eval_at"]]),
         "_momentum" if experiment_config.get("mu1") else ""
     )
     with open(filename, "w") as f:
