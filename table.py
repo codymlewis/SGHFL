@@ -60,7 +60,7 @@ def process_train_test_results(data):
                         new_results[k] = f"{np.mean(v):.3f} ({np.std(v):.3f})"
     return new_results
 
-def process_performance_environment(env_data):
+def process_fairness_environment(env_data):
     environment = ""
     num_rounds = int(env_data[re.search('num_rounds=', env_data).end():re.search(r'num_rounds=\d+', env_data).end()])
     drop_round = int(env_data[re.search('drop_round=', env_data).end():re.search(r'drop_round=\d+', env_data).end()])
@@ -108,12 +108,10 @@ if __name__ == "__main__":
     df = pd.DataFrame(tabular_data).T
     df = df.reset_index()
 
-    if args.performance:
-        df['environment'] = df['index'].apply(process_performance_environment)
+    if args.fairness:
+        df['environment'] = df['index'].apply(process_fairness_environment)
     elif args.attack:
         df['environment'] = df['index'].apply(process_attack_environment)
-    elif args.fairness:
-        df['environment'] = df['index'].apply(process_performance_environment)
     else:
         df['environment'] = df['index']
 
