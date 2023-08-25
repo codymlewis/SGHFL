@@ -40,14 +40,14 @@ def solar_home():
 
     concat_data = np.concatenate(list(data.values()))
     X_processor = skp.StandardScaler().fit(concat_data)
-    Y_processor = skp.MinMaxScaler().fit(concat_data[:, 0].reshape(-1, 1))
+    Y_processor = skp.MinMaxScaler().fit(concat_data[:, :2])
 
     def get_customer_data(customer=1):
         idx = np.arange(24, len(data[customer]))
         expanded_idx = np.array([np.arange(i - 24, i - 1) for i in idx])
         return (
-            X_processor.transform(data[customer][expanded_idx].reshape(-1, 4)).reshape(-1, 23, 4),
-            Y_processor.transform(data[customer][idx, 0].reshape(-1, 1)).reshape(-1)
+            X_processor.transform(data[customer][expanded_idx].reshape(-1, 5)).reshape(-1, 23, 5),
+            Y_processor.transform(data[customer][idx, :2])
         )
     return get_customer_data
 

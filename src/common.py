@@ -21,38 +21,38 @@ def crossentropy_loss(model):
 
 def l2_loss(model):
     def _apply(params, X, Y):
-        return jnp.mean(0.5 * (model.apply(params, X).T - Y)**2)
+        return jnp.mean(0.5 * (model.apply(params, X) - Y)**2)
     return _apply
 
 
 def log_cosh_loss(model):
     def _apply(params, X, Y):
-        return jnp.mean(jnp.log(jnp.cosh(jnp.squeeze(model.apply(params, X).T) - Y)))
+        return jnp.mean(jnp.log(jnp.cosh(model.apply(params, X) - Y)))
     return _apply
 
 
 def mean_squared_error(model):
     def _apply(params, X, Y):
-        return jnp.mean((model.apply(params, X).T - Y)**2)
+        return jnp.mean((model.apply(params, X) - Y)**2)
     return _apply
 
 
 def root_mean_squared_error(model):
     def _apply(params, X, Y):
-        return jnp.sqrt(jnp.mean((model.apply(params, X).T - Y)**2))
+        return jnp.sqrt(jnp.mean((model.apply(params, X) - Y)**2))
     return _apply
 
 
 def mean_absolute_error(model):
     def _apply(params, X, Y):
-        return jnp.mean(jnp.abs(model.apply(params, X).T - Y))
+        return jnp.mean(jnp.abs(model.apply(params, X) - Y))
     return _apply
 
 
 def r2score(model):
     def _apply(params, X, Y):
-        ss_res = jnp.sum((model.apply(params, X).T - Y)**2)
-        ss_tot = jnp.sum((Y - Y.mean())**2)
+        ss_res = jnp.sum((model.apply(params, X) - Y)**2)
+        ss_tot = jnp.sum((Y - Y.mean(axis=0))**2)
         return 1 - (ss_res / ss_tot)
     return _apply
 
@@ -68,14 +68,12 @@ class Metrics:
     def __init__(self, model, metrics):
         metrics = [globals()[m] if isinstance(m, str) else m for m in metrics]
         self.metrics = [jax.jit(m(model)) for m in metrics]
-        # self.metrics = [m(model) for m in metrics]
         self.metric_names = [m.__name__ for m in metrics]
         self.batch_count = 0
         self.measurements = [0.0 for m in self.metrics]
 
     def add_batch(self, params, X, Y):
         for i, metric in enumerate(self.metrics):
-            # print(f"{i=}, {Y=}")
             self.measurements[i] += metric(params, X, Y)
         self.batch_count += 1
 
@@ -169,7 +167,7 @@ class SolarHomeNet(nn.Module):
         x = nn.relu(x)
         x = nn.Dense(50)(x)
         x = nn.relu(x)
-        x = nn.Dense(1)(x)
+        x = nn.Dense(2)(x)
         return nn.sigmoid(x)
 
 
