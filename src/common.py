@@ -162,12 +162,14 @@ class SolarHomeNet(nn.Module):
         x = nn.relu(x)
         x = nn.Conv(64, (3,))(x)
         x = nn.relu(x)
-        x = einops.rearrange(x, "b h s -> b (h s)")
+
+        x = einops.rearrange(x, "b t s -> b (t s)")
         x = nn.Dense(100)(x)
         x = nn.relu(x)
         x = nn.Dense(50)(x)
         x = nn.relu(x)
         x = nn.Dense(2)(x)
+        # return x
         return nn.sigmoid(x)
 
 
@@ -255,11 +257,11 @@ def create_solar_home_model(
     metrics = ["mean_absolute_error", "root_mean_squared_error", "r2score"]
 ):
     model = SolarHomeNet()
-    params = model.init(jax.random.PRNGKey(seed if seed else 42), jnp.zeros((1, 23, 4)))
+    params = model.init(jax.random.PRNGKey(seed if seed else 42), jnp.zeros((1, 23, 5)))
     return Model(
         model,
         params,
-        opt(lr, momentum=0.9),
+        opt(lr),
         loss,
         metrics=metrics,
         seed=seed

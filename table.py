@@ -46,18 +46,25 @@ def process_train_test_results(data):
                     p = train_or_test == "train" and vk == "cosinesimilarity"
                     q = train_or_test == "test"
                     if p or q:
+                        new_key = f"{k} {vk}"
                         if vk in ["accuracy", "accuracy std", "cosinesimilarity", "asr"]:
+                            # new_key += " (%)"
+                            # vv *= 100
                             new_results[f"{k} {vk}"] = f"{np.mean(vv):.3%} ({np.std(vv):.3%})"
                         else:
                             new_results[f"{k} {vk}"] = f"{np.mean(vv):.3f} ({np.std(vv):.3f})"
+                        # new_results[new_key] = f"{np.mean(vv):.3e} ({np.std(vv):.3e})"
             else:
                 p = train_or_test == "train" and k == "cosinesimilarity"
                 q = train_or_test == "test" 
                 if p or q:
                     if k in ["accuracy", "cosinesimilarity", "asr"]:
+                        # k += " (%)"
+                        # v *= 100
                         new_results[k] = f"{np.mean(v):.3%} ({np.std(v):.3%})"
                     else:
                         new_results[k] = f"{np.mean(v):.3f} ({np.std(v):.3f})"
+                    # new_results[k] = f"{np.mean(v):.3e} ({np.std(v):.3e})"
     return new_results
 
 def process_fairness_environment(env_data):
