@@ -26,6 +26,16 @@ class DroppingClientManager(flagon.client_manager.ClientManager):
         return self.test_clients
 
 
+class FractionalClientManager(flagon.client_manager.ClientManager):
+    def __init__(self, k=1, seed=None):
+        super().__init__()
+        self.k = k
+        self.rng = np.random.default_rng(seed)
+    
+    def sample(self):
+        return self.rng.choice(self.clients, min(len(self.clients), self.k), replace=False)
+
+
 class Adaptive(flagon.Server):
     def __init__(self, initial_parameters, config, strategy=None, client_manager=None):
         super().__init__(initial_parameters, config, strategy, client_manager)

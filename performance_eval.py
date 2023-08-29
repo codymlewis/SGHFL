@@ -17,7 +17,8 @@ def create_sh_clients(create_model_fn, nclients, client_ids, seed=None):
     get_customer_data = src.load_data.solar_home()
 
     def create_client(client_id: str):
-        client_X, client_Y = get_customer_data(client_ids[client_id])
+        client_X, client_Y = get_customer_data(int(client_id) + 1)
+        # client_X, client_Y = get_customer_data(client_ids[client_id])
         client_data = src.data_manager.Dataset({
             "train": {"X": client_X[:300 * 24], "Y": client_Y[:300 * 24]},
             "test": {"X": client_X[300 * 24:], "Y": client_Y[300 * 24:]}
@@ -53,6 +54,7 @@ def experiment(config, strategy_class, middle_server_class=flagon.MiddleServer):
         data = data.normalise()
     else:
         data_collector_counts, client_ids = src.load_data.solar_home_customer_regions()
+        config['batch_size'] = 128
     for i in (pbar := trange(config['repeat'])):
         seed = round(np.pi**i + np.exp(i)) % 2**32
         if config['dataset'] == "fmnist":
@@ -67,10 +69,12 @@ def experiment(config, strategy_class, middle_server_class=flagon.MiddleServer):
         else:
             server = flagon.Server(src.common.create_solar_home_model().get_parameters(), config)
             network_arch = {
-                "clients": [{"clients": 0} for _ in data_collector_counts.keys()],
+                "clients": 300,
+                # "clients": [{"clients": 0} for _ in data_collector_counts.keys()],
+                # "clients": [{"clients": 0, "client_manager": src.server.FractionalClientManager(k=15, seed=seed)} for _ in data_collector_counts.keys()],
             }
-            for k, v in data_collector_counts.items():
-                network_arch['clients'][k]['clients'] = v
+            # for k, v in data_collector_counts.items():
+            #     network_arch['clients'][k]['clients'] = v
             clients = create_sh_clients(
                 src.common.create_solar_home_model,
                 flagon.common.count_clients(network_arch),

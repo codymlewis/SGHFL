@@ -1,3 +1,4 @@
+from functools import partial
 import time
 import flagon
 import numpy as np
@@ -71,10 +72,10 @@ class AdaptiveLoss(flagon.MiddleServer):
             flattened_parameters = jnp.concatenate([jnp.array(p.reshape(-1)) for p in parameters])
             for c in self.client_manager.clients:
                 c.model.change_loss_fun(
-                    adaptive_loss(
-                        c.model.model,
-                        c.model.loss_fun,
-                        flattened_parameters,
+                    partial(
+                        adaptive_loss,
+                        loss_fun=c.model.loss_fun,
+                        old_params=flattened_parameters,
                         dist_fun=mse if config['adaptive_loss'] == "mse" else cosine_distance
                     )
                 )

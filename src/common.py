@@ -11,6 +11,8 @@ from tqdm import tqdm
 from flagon.common import count_clients
 
 
+CACHED_SOLVERS = {}
+
 def crossentropy_loss(model):
     def _apply(params, X, Y):
         logits = jnp.clip(model.apply(params, X), 1e-15, 1 - 1e-15)
@@ -21,13 +23,29 @@ def crossentropy_loss(model):
 
 def l2_loss(model):
     def _apply(params, X, Y):
-        return jnp.mean(0.5 * (model.apply(params, X) - Y)**2)
+        return jnp.linalg.norm(model.apply(params, X) - Y)
     return _apply
 
 
 def log_cosh_loss(model):
     def _apply(params, X, Y):
         return jnp.mean(jnp.log(jnp.cosh(model.apply(params, X) - Y)))
+    return _apply
+
+
+def ridge_loss(model, alpha=1.0):
+    def _apply(params, X, Y):
+        dist = jnp.mean(jnp.linalg.norm(model.apply(params, X) - Y, axis=1)**2)
+        reg = jnp.sum(jnp.array([jnp.sum(p.reshape(-1)**2) for p in jax.tree_util.tree_leaves(params)]))
+        return dist + alpha * reg
+    return _apply
+
+
+def reg_loss(model, alpha=1.0):
+    def _apply(params, X, Y):
+        dist = jnp.mean((model.apply(params, X) - Y)**2)
+        reg = jnp.sum(jnp.array([jnp.sum(p.reshape(-1)**2) for p in jax.tree_util.tree_leaves(params)])) / len(Y)
+        return dist + alpha * reg
     return _apply
 
 
@@ -46,14 +64,6 @@ def root_mean_squared_error(model):
 def mean_absolute_error(model):
     def _apply(params, X, Y):
         return jnp.mean(jnp.abs(model.apply(params, X) - Y))
-    return _apply
-
-
-def r2score(model):
-    def _apply(params, X, Y):
-        ss_res = jnp.sum((model.apply(params, X) - Y)**2)
-        ss_tot = jnp.sum((Y - Y.mean(axis=0))**2)
-        return 1 - (ss_res / ss_tot)
     return _apply
 
 
@@ -85,24 +95,38 @@ class Metrics:
 
 
 class Model:
-    def __init__(self, model, params, opt, loss_fun, metrics=[accuracy], seed=None):
+    def __init__(self, model, params, opt, loss_fun, metrics=[accuracy], seed=None, no_cache=False):
+        loss_fun_name = loss_fun if isinstance(loss_fun, str) else loss_fun.__name__
+        # opt_name = opt.__name__
         loss_fun = globals()[loss_fun] if isinstance(loss_fun, str) else loss_fun
         self.model = model
         self.params = params
         self.opt = opt
         self.loss_fun = loss_fun(model)
-        self.solver = jaxopt.OptaxSolver(opt=opt, fun=self.loss_fun)
+        if no_cache:
+            self.solver = jaxopt.OptaxSolver(opt=opt, fun=self.loss_fun)
+            self.solver_step = jax.jit(self.solver.update)
+        else:
+            if CACHED_SOLVERS.get(loss_fun_name) is None:
+                CACHED_SOLVERS[loss_fun_name] = {}
+                CACHED_SOLVERS[loss_fun_name]['solver'] = jaxopt.OptaxSolver(opt=opt, fun=self.loss_fun)
+                CACHED_SOLVERS[loss_fun_name]['step'] = jax.jit(CACHED_SOLVERS[loss_fun_name]['solver'].update)
+            self.solver = CACHED_SOLVERS[loss_fun_name]['solver']
+            self.solver_step = CACHED_SOLVERS[loss_fun_name]['step']
         self.state = self.solver.init_state(params)
-        self.solver_step = jax.jit(self.solver.update)
         self.rng = np.random.default_rng(seed)
         self.metrics = Metrics(model, metrics)
         self.params_tree_structure = jax.tree_util.tree_structure(self.params)
 
     def change_loss_fun(self, loss_fun):
-        self.loss_fun = loss_fun
-        self.solver = jaxopt.OptaxSolver(opt=self.opt, fun=loss_fun)
+        loss_fun_name = loss_fun.__name__
+        self.loss_fun = loss_fun(self.model)
+        if CACHED_SOLVERS.get(loss_fun_name) is None:
+            CACHED_SOLVERS[loss_fun_name] = {}
+            CACHED_SOLVERS[loss_fun_name]['solver'] = jaxopt.OptaxSolver(opt=opt, fun=self.loss_fun)
+        self.solver = CACHED_SOLVERS[loss_fun_name]['solver']
+        self.solver_step = CACHED_SOLVERS[loss_fun_name]['step']
         self.state = self.solver.init_state(self.params)
-        self.solver_step = jax.jit(self.solver.update)
 
     def set_parameters(self, params_leaves):
         self.params = jax.tree_util.tree_unflatten(self.params_tree_structure, params_leaves)
@@ -158,10 +182,6 @@ class SolarHomeNet(nn.Module):
     def __call__(self, x):
         x = nn.Conv(32, (3,))(x)
         x = nn.relu(x)
-        x = nn.Conv(32, (3,))(x)
-        x = nn.relu(x)
-        x = nn.Conv(64, (3,))(x)
-        x = nn.relu(x)
 
         x = einops.rearrange(x, "b t s -> b (t s)")
         x = nn.Dense(100)(x)
@@ -169,8 +189,7 @@ class SolarHomeNet(nn.Module):
         x = nn.Dense(50)(x)
         x = nn.relu(x)
         x = nn.Dense(2)(x)
-        # return x
-        return nn.sigmoid(x)
+        return nn.relu(x)
 
 
 def regional_distribution(labels, network_arch, rng, alpha=0.5):
@@ -251,10 +270,10 @@ def create_fmnist_model(
 
 def create_solar_home_model(
     seed=None,
-    lr = 0.1,
-    opt = partial(optax.sgd, momentum=0.9),
-    loss = "l2_loss",
-    metrics = ["mean_absolute_error", "root_mean_squared_error", "r2score"]
+    lr = optax.cosine_decay_schedule(0.01, 100),
+    opt = optax.sgd,
+    loss = "reg_loss",
+    metrics = ["mean_absolute_error", "mean_squared_error"]
 ):
     model = SolarHomeNet()
     params = model.init(jax.random.PRNGKey(seed if seed else 42), jnp.zeros((1, 23, 5)))
