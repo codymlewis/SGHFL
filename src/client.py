@@ -4,7 +4,7 @@ import flagon
 class Client(flagon.Client):
     def __init__(self, data, create_model_fn, seed=None):
         self.data = data
-        self.model = create_model_fn(seed)
+        self.model = create_model_fn(seed=seed)
 
     def fit(self, parameters, config):
         self.model.set_parameters(parameters)

@@ -52,7 +52,7 @@ def process_train_test_results(data):
                             # vv *= 100
                             new_results[f"{k} {vk}"] = f"{np.mean(vv):.3%} ({np.std(vv):.3%})"
                         else:
-                            new_results[f"{k} {vk}"] = f"{np.mean(vv):.3f} ({np.std(vv):.3f})"
+                            new_results[f"{k} {vk}"] = f"{np.mean(vv):.3g} ({np.std(vv):.3g})"
                         # new_results[new_key] = f"{np.mean(vv):.3e} ({np.std(vv):.3e})"
             else:
                 p = train_or_test == "train" and k == "cosinesimilarity"
@@ -63,7 +63,7 @@ def process_train_test_results(data):
                         # v *= 100
                         new_results[k] = f"{np.mean(v):.3%} ({np.std(v):.3%})"
                     else:
-                        new_results[k] = f"{np.mean(v):.3f} ({np.std(v):.3f})"
+                        new_results[k] = f"{np.mean(v):.3g} ({np.std(v):.3g})"
                     # new_results[k] = f"{np.mean(v):.3e} ({np.std(v):.3e})"
     return new_results
 

@@ -1,3 +1,4 @@
+from typing import List, Callable
 from functools import partial
 from inspect import signature
 import numpy as np
@@ -8,6 +9,9 @@ import optax
 import flax.linen as nn
 import einops
 from tqdm import tqdm
+import sklearn.metrics as skm
+import scipy.optimize as sp_opt
+import scipy.sparse.linalg as sp_linalg
 from flagon.common import count_clients
 
 
@@ -97,7 +101,6 @@ class Metrics:
 class Model:
     def __init__(self, model, params, opt, loss_fun, metrics=[accuracy], seed=None, no_cache=False):
         loss_fun_name = loss_fun if isinstance(loss_fun, str) else loss_fun.__name__
-        # opt_name = opt.__name__
         loss_fun = globals()[loss_fun] if isinstance(loss_fun, str) else loss_fun
         self.model = model
         self.params = params
@@ -177,19 +180,60 @@ class FMNISTNet(nn.Module):
         return nn.softmax(x)
 
 
-class SolarHomeNet(nn.Module):
-    @nn.compact
-    def __call__(self, x):
-        x = nn.Conv(32, (3,))(x)
-        x = nn.relu(x)
+def _ridge_func(X, Y, alpha, W):
+    residual = X.dot(W) - Y
+    f = 0.5 * residual.dot(residual) + 0.5 * alpha * W.dot(W)
+    grad = X.T @ residual + alpha * W
+    return f, grad
 
-        x = einops.rearrange(x, "b t s -> b (t s)")
-        x = nn.Dense(100)(x)
-        x = nn.relu(x)
-        x = nn.Dense(50)(x)
-        x = nn.relu(x)
-        x = nn.Dense(2)(x)
-        return nn.relu(x)
+
+class RidgeModel:
+    def __init__(self, metrics: List[str | Callable], alpha: float = 1.0):
+        self.alpha = alpha
+        # self.params = np.random.uniform(low=0.0, high=0.1, size=(2, 115,))
+        self.params = np.zeros((2, 115,))
+        self.metrics = [getattr(skm, m) if isinstance(m, str) else m for m in metrics]
+        self.metric_names = [m.__name__ for m in self.metrics]
+
+    def change_loss_fun(self):
+        pass
+
+    def set_parameters(self, parameters):
+        self.params = parameters[0]
+
+    def get_parameters(self):
+        return [self.params]
+
+    def step(self, X, Y, epochs, **kwargs):
+        X = einops.rearrange(X, 'b h s -> b (h s)')
+        
+        loss = 0
+        for i in range(Y.shape[1]):
+            results = sp_opt.minimize(
+                partial(_ridge_func, X, Y[:, i], self.alpha),
+                x0=self.params[i],
+                method="L-BFGS-B",
+                tol=1e-6,
+                bounds=[(0, np.inf)] * X.shape[1],
+                jac=True,
+                options={"maxiter": epochs}
+            )
+            self.params[i] = results['x']
+            loss += results['fun']
+
+        return {"loss": loss / (Y.shape[1] * X.shape[1])}
+
+    def evaluate(self, X, Y, **kwargs):
+        X = einops.rearrange(X, 'b h s -> b (h s)')
+        preds = []
+        for i in range(self.params.shape[0]):
+            preds.append(X.dot(self.params[i]))
+        predictions = np.stack(preds, axis=-1)
+
+        measurements = {}
+        for metric_name, metric_fun in zip(self.metric_names, self.metrics):
+            measurements[metric_name] = metric_fun(Y, predictions)
+        return measurements
 
 
 def regional_distribution(labels, network_arch, rng, alpha=0.5):
@@ -268,23 +312,8 @@ def create_fmnist_model(
     )
 
 
-def create_solar_home_model(
-    seed=None,
-    lr = optax.cosine_decay_schedule(0.01, 100),
-    opt = optax.sgd,
-    loss = "reg_loss",
-    metrics = ["mean_absolute_error", "mean_squared_error"]
-):
-    model = SolarHomeNet()
-    params = model.init(jax.random.PRNGKey(seed if seed else 42), jnp.zeros((1, 23, 5)))
-    return Model(
-        model,
-        params,
-        opt(lr),
-        loss,
-        metrics=metrics,
-        seed=seed
-    )
+def create_solar_home_model(metrics = ["mean_absolute_error", "mean_squared_error"], **kwargs):
+    return RidgeModel(metrics=metrics)
 
 
 def get_experiment_config(all_exp_configs, exp_id):
