@@ -117,10 +117,11 @@ class Server:
         }    
 
 
-def cosine_similarity(client_parameters):
+def cosine_similarity(client_parameters: List[NDArray]) -> float:
     client_parameters = [cp.reshape(-1) for cp in client_parameters]
-    similarity_matrix = skm.pairwise.cosine_similarity(client_parameters) - np.eye(len(client_parameters))
+    similarity_matrix = np.abs(skm.pairwise.cosine_similarity(client_parameters)) - np.eye(len(client_parameters))
     return similarity_matrix.sum() / (len(client_parameters) * (len(client_parameters) - 1))
+
 
 class MiddleServer:
     def __init__(self, clients, config):
@@ -251,6 +252,7 @@ if __name__ == "__main__":
     parser.add_argument("-i", "--id", type=int, default=1, help="Which of the experiments in the config to perform (counts from 1).")
     args = parser.parse_args()
     # TODO: Add attack and fairness evals
+    # Maybe try different values for the momentum
 
     start_time = time.time()
     with open("configs/performance.json", 'r') as f:
