@@ -8,8 +8,12 @@ import pandas as pd
 def env_process(json_file):
     env_name = json_file[json_file.find('_', 11):].replace('.json', '')
     env_name = env_name.replace('_', ' ')
-    # env_name = re.sub("mu1=.+", "momentum", env_name)
-    env_name = re.sub("num finetune episodes=\d", "intermediate finetuning", env_name)
+    env_name = env_name.replace('num rounds', "$R$")
+    env_name = env_name.replace('num episodes', "$E$")
+    env_name = env_name.replace("mu1", r"$\mu_1$")
+    env_name = env_name.replace("mu2", r"$\mu_2$")
+    env_name = re.sub("num epochs=\d", "", env_name)
+    env_name = re.sub("num finetune episodes=\d", "IF", env_name)
     return env_name
 
 
