@@ -180,7 +180,14 @@ def cosine_similarity(client_parameters: List[NDArray]) -> float:
 
 class MiddleServer:
     def __init__(self, clients, config):
-        self.aggregator = KickbackMomentum() if config.get("mu1") else FedAVG()
+        if config.get("mu1") and config.get("top_k"):
+            self.aggregator = TopKKickbackMomentum()
+        elif config.get("mu1"):
+            self.aggregator = KickbackMomentum()
+        elif config.get("top_k"):
+            self.aggregator = TopK()
+        else:
+            self.aggregator = FedAVG()
         self.clients = clients
         logger.info("Middle server initialized with %d clients", len(clients))
 
@@ -265,7 +272,9 @@ class KickbackMomentum:
         parameters: NDArray,
         config: Dict[str, str | int | float]
     ) -> NDArray:
-        if self.episode % config['num_episodes'] == 0:
+        p = self.episode % config['num_episodes'] == 0
+        q = config.get("drop_round") is None or config['round'] < config.get("drop_round")
+        if p and q:
             if self.momentum is None:
                 self.momentum = np.zeros_like(parameters)
                 self.prev_parameters = parameters.copy()
@@ -274,6 +283,68 @@ class KickbackMomentum:
                 self.prev_parameters = parameters.copy()
         self.episode += 1
         grads = np.average([cp - parameters for cp in client_parameters], weights=client_samples, axis=0)
+        return self.prev_parameters + config["mu2"] * self.momentum + grads
+
+
+class TopK:
+    def __init__(self):
+        self.agg_top_k = None
+
+    def aggregate(
+        self,
+        client_parameters: List[NDArray],
+        client_samples: List[int],
+        parameters: NDArray,
+        config: Dict[str, str | int | float],
+    ) -> NDArray:
+        flat_grads = np.average([(p - parameters).reshape(-1) for p in client_parameters], weights=client_samples, axis=0)
+        if self.agg_top_k is None:
+            self.agg_top_k = np.zeros_like(flat_grads)
+        
+        k = round(len(flat_grads) * (1 - config['top_k']))
+        if config['round'] < config["drop_round"]:
+            idx = np.where(flat_grads >= np.partition(flat_grads, k)[k])[0]
+            self.agg_top_k[idx] += 1
+            return parameters
+        flat_grads = np.where(self.agg_top_k >= np.partition(self.agg_top_k, -k)[-k], flat_grads, 0)
+        return parameters + flat_grads.reshape(parameters.shape)
+
+class TopKKickbackMomentum:
+    def __init__(self):
+        self.momentum = None
+        self.prev_parameters = None
+        self.episode = 0
+        self.agg_top_k = None
+
+    def aggregate(
+        self,
+        client_parameters: List[NDArray],
+        client_samples: List[int],
+        parameters: NDArray,
+        config: Dict[str, str | int | float],
+    ) -> NDArray:
+        flat_grads = np.average([(p - parameters).reshape(-1) for p in client_parameters], weights=client_samples, axis=0)
+        if self.agg_top_k is None:
+            self.agg_top_k = np.zeros_like(flat_grads)
+        
+        k = round(len(flat_grads) * (1 - config['top_k']))
+        if config['round'] < config["drop_round"]:
+            idx = np.where(flat_grads >= np.partition(flat_grads, k)[k])[0]
+            self.agg_top_k[idx] += 1
+            grads = flat_grads.reshape(parameters.shape)
+        else:
+            grads = np.where(self.agg_top_k >= np.partition(self.agg_top_k, -k)[-k], flat_grads, 0).reshape(parameters.shape)
+
+        p = self.episode % config['num_episodes'] == 0
+        q = config.get("drop_round") is None or config['round'] < config.get("drop_round")
+        if p and q:
+            if self.momentum is None:
+                self.momentum = np.zeros_like(parameters)
+                self.prev_parameters = parameters.copy()
+            else:
+                self.momentum = config["mu1"] * self.momentum + (parameters - self.prev_parameters)
+                self.prev_parameters = parameters.copy()
+        self.episode += 1
         return self.prev_parameters + config["mu2"] * self.momentum + grads
 
 
@@ -454,7 +525,6 @@ if __name__ == "__main__":
     parser.add_argument("-a", "--attack", action="store_true", help="Perform experiments evaluating the vulnerability to and mitigation of attacks.")
     parser.add_argument("-f", "--fairness", action="store_true", help="Perform experiments evaluating the fairness.")
     args = parser.parse_args()
-    # TODO: Add fairness evals
 
     start_time = time.time()
     keyword = "performance" if args.performance else "attack" if args.attack else "fairness"

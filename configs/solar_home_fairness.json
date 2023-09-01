@@ -8,7 +8,7 @@
         },
         {
             "mu1": 0.9,
-            "mu2": 0.666
+            "mu2": 0.1
         },
         {
             "num_finetune_episodes": 5
@@ -16,61 +16,7 @@
         {
             "num_finetune_episodes": 5,
             "mu1": 0.9,
-            "mu2": 0.666
-        },
-        {
-            "bottom_k": 0.1
-        },
-        {
-            "bottom_k": 0.5
-        },
-        {
-            "bottom_k": 0.9
-        },
-        {
-            "num_finetune_episodes": 5,
-            "bottom_k": 0.1
-        },
-        {
-            "num_finetune_episodes": 5,
-            "bottom_k": 0.5
-        },
-        {
-            "num_finetune_episodes": 5,
-            "bottom_k": 0.9
-        },
-        {
-            "bottom_k": 0.1,
-            "mu1": 0.9,
-            "mu2": 0.666
-        },
-        {
-            "bottom_k": 0.5,
-            "mu1": 0.9,
-            "mu2": 0.666
-        },
-        {
-            "bottom_k": 0.9,
-            "mu1": 0.9,
-            "mu2": 0.666
-        },
-        {
-            "num_finetune_episodes": 5,
-            "bottom_k": 0.1,
-            "mu1": 0.9,
-            "mu2": 0.666
-        },
-        {
-            "num_finetune_episodes": 5,
-            "bottom_k": 0.5,
-            "mu1": 0.9,
-            "mu2": 0.666
-        },
-        {
-            "num_finetune_episodes": 5,
-            "bottom_k": 0.9,
-            "mu1": 0.9,
-            "mu2": 0.666
+            "mu2": 0.1
         },
         {
             "top_k": 0.1
@@ -96,35 +42,35 @@
         {
             "top_k": 0.1,
             "mu1": 0.9,
-            "mu2": 0.666
+            "mu2": 0.1
         },
         {
             "top_k": 0.5,
             "mu1": 0.9,
-            "mu2": 0.666
+            "mu2": 0.1
         },
         {
             "top_k": 0.9,
             "mu1": 0.9,
-            "mu2": 0.666
+            "mu2": 0.1
         },
         {
             "num_finetune_episodes": 5,
             "top_k": 0.1,
             "mu1": 0.9,
-            "mu2": 0.666
+            "mu2": 0.1
         },
         {
             "num_finetune_episodes": 5,
             "top_k": 0.5,
             "mu1": 0.9,
-            "mu2": 0.666
+            "mu2": 0.1
         },
         {
             "num_finetune_episodes": 5,
             "top_k": 0.9,
             "mu1": 0.9,
-            "mu2": 0.666
+            "mu2": 0.1
         },
         {
             "drop_round": 6
@@ -136,13 +82,13 @@
         {
             "drop_round": 6,
             "mu1": 0.9,
-            "mu2": 0.666
+            "mu2": 0.1
         },
         {
             "drop_round": 6,
             "num_finetune_episodes": 5,
             "mu1": 0.9,
-            "mu2": 0.666
+            "mu2": 0.1
         }
     ]
 }

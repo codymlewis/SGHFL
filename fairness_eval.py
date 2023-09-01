@@ -55,7 +55,7 @@ def experiment(config):
             src.common.create_fmnist_model().get_parameters(),
             config,
             client_manager=src.server.DroppingClientManager(config['drop_round'], seed=seed),
-            strategy=strategy_class()
+            strategy=flagon.server.FedAVG()
         )
 
         if config.get("num_finetune_episodes") and config.get("adaptive_loss"):
