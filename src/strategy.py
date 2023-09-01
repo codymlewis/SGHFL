@@ -14,7 +14,7 @@ class Centre(FedAVG):
         for i, layer in enumerate(parameters):
             model = skc.KMeans(n_clusters=len(client_parameters) // 2 + 1, n_init='auto')
             model.fit([cp[i].reshape(-1) for cp in client_parameters])
-            aggregated_parameters.append(np.mean(model.cluster_centers_, axis=0).reshape(parameters[i].shape))
+            aggregated_parameters.append(np.mean(model.cluster_centers_, axis=0).reshape(layer.shape))
         return aggregated_parameters
 
 
