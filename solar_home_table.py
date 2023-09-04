@@ -40,16 +40,21 @@ if __name__ == "__main__":
     parser.add_argument("-f", "--fairness", action="store_true", help="Use the fairness experiment results.")
     parser.add_argument("-p", "--performance", action="store_true", help="Use the performance experiment results.")
     parser.add_argument("-a", "--attack", action="store_true", help="Use the attack experiment results.")
+    parser.add_argument("-b", "--backdoor", action="store_true", help="Show backdoor attacks.")
     args = parser.parse_args()
 
     keyword = 'performance' if args.performance else 'fairness' if args.fairness else 'attack'
     json_files = [f for f in os.listdir("results") if ("solar_home" in f and keyword in f)]
+    if args.attack and args.backdoor:
+        json_files = [f for f in json_files if "backdoor" in f]
+    elif args.attack and not args.backdoor:
+        json_files = [f for f in json_files if "backdoor" not in f]
 
     tabular_data = {}
     for json_file in json_files:
         with open(f"results/{json_file}", 'r') as f:
             data = json.load(f)
-        env_name = env_process(json_file)
+        env_name = env_process(json_file.replace(f'experiment_type={keyword}', ''))
         tabular_data[env_name] = process_data(data)
 
     df = pd.DataFrame(tabular_data).T

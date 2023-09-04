@@ -97,8 +97,10 @@ class Server:
         logger.info("Server completed training in %f seconds", time.time() - start_time)
 
         if self.config.get("drop_round"):
-            self.clients = self.all_clients
-            return metrics, baseline_metrics
+            if self.config['drop_round'] < self.config['num_rounds']:
+                self.clients = self.all_clients
+                return metrics, baseline_metrics
+            return metrics, self.analytics()  # If there is no drop then the baseline is the same as the other results
 
         return metrics
 
