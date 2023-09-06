@@ -403,7 +403,7 @@ class IPM(Adversary):
 
 def gen_backdoor_data(X, Y):
     backdoor_X = X.copy().reshape(-1, 23, 5)
-    backdoor_X[:, :, -1] = 100
+    backdoor_X[:, -3:, -1] = 100
     backdoor_Y = Y.copy()
     backdoor_Y[:, 1] = 8
     return backdoor_X.reshape(X.shape), backdoor_Y
