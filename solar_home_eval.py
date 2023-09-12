@@ -311,6 +311,7 @@ class TopK:
         flat_grads = np.where(self.agg_top_k >= np.partition(self.agg_top_k, -k)[-k], flat_grads, 0)
         return parameters + flat_grads.reshape(parameters.shape)
 
+
 class TopKKickbackMomentum:
     def __init__(self):
         self.momentum = None
