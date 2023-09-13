@@ -36,7 +36,8 @@ def format_final_table(styler):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Create a LaTeX table from the solar home experiment results.")
+    parser = argparse.ArgumentParser(description="Create a LaTeX table from the solar home or apartment experiment results.")
+    parser.add_argument("-d", "--dataset", type=str, default="solar_home", help="Specify a dataset to tabulate the results from.")
     parser.add_argument("-f", "--fairness", action="store_true", help="Use the fairness experiment results.")
     parser.add_argument("-p", "--performance", action="store_true", help="Use the performance experiment results.")
     parser.add_argument("-a", "--attack", action="store_true", help="Use the attack experiment results.")
@@ -44,7 +45,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     keyword = 'performance' if args.performance else 'fairness' if args.fairness else 'attack'
-    json_files = [f for f in os.listdir("results") if ("solar_home" in f and keyword in f)]
+    json_files = [f for f in os.listdir("results") if (args.dataset in f and keyword in f)]
     if args.attack and args.backdoor:
         json_files = [f for f in json_files if "backdoor" in f]
     elif args.attack and not args.backdoor:

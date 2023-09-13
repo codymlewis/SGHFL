@@ -7,3 +7,5 @@ data/
 results/
 *.bak
 *.pkl
+.ipynb_checkpoints/
+.virtual_documents

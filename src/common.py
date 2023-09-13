@@ -1,6 +1,6 @@
 from typing import List, Callable
 from functools import partial
-from inspect import signature
+import math
 import numpy as np
 import jax
 import jax.numpy as jnp
@@ -47,7 +47,7 @@ def ridge_loss(model, alpha=1.0):
 
 def reg_loss(model, alpha=1.0):
     def _apply(params, X, Y):
-        dist = jnp.mean((model.apply(params, X) - Y)**2)
+        dist = jnp.mean((Y - model.apply(params, X))**2)
         reg = jnp.sum(jnp.array([jnp.sum(p.reshape(-1)**2) for p in jax.tree_util.tree_leaves(params)])) / len(Y)
         return dist + alpha * reg
     return _apply
@@ -55,19 +55,19 @@ def reg_loss(model, alpha=1.0):
 
 def mean_squared_error(model):
     def _apply(params, X, Y):
-        return jnp.mean((model.apply(params, X) - Y)**2)
+        return jnp.mean((Y - model.apply(params, X))**2)
     return _apply
 
 
 def root_mean_squared_error(model):
     def _apply(params, X, Y):
-        return jnp.sqrt(jnp.mean((model.apply(params, X) - Y)**2))
+        return jnp.sqrt(jnp.mean(Y - (model.apply(params, X))**2))
     return _apply
 
 
 def mean_absolute_error(model):
     def _apply(params, X, Y):
-        return jnp.mean(jnp.abs(model.apply(params, X) - Y))
+        return jnp.mean(jnp.abs(Y - model.apply(params, X)))
     return _apply
 
 
@@ -139,21 +139,22 @@ class Model:
     
     def step(self, X, Y, epochs, steps_per_epoch=None, batch_size=32, verbose=0):
         for e in range(epochs):
-            indices = np.arange(len(Y))
-            self.rng.shuffle(indices)
-            idx = indices[:len(indices) - (len(indices) % batch_size)].reshape((-1, batch_size))
+            loss = 0.0
+            idx = np.array_split(self.rng.permutation(len(Y)), math.ceil(len(Y) / batch_size))
             if steps_per_epoch:
                 idx = idx[:steps_per_epoch]
             if verbose:
                 idx = tqdm(idx)
             for ix in idx:
                 self.params, self.state = self.solver_step(params=self.params, state=self.state, X=X[ix], Y=Y[ix])
+                loss += self.state.value
                 if verbose:
                     idx.set_postfix_str(f"LOSS: {self.state.value:.3f}, epoch: {e + 1}/{epochs}")
-            if len(indices) % batch_size:
-                ix = indices[-len(indices) % batch_size:]
-                self.params, self.state = self.solver_step(params=self.params, state=self.state, X=X[ix], Y=Y[ix])
-        return {"loss": self.state.value.item()}
+        return {"loss": loss.item() / math.ceil(len(Y) / batch_size)}
+
+    def predict(self, X, batch_size=200):
+        idxs = np.array_split(np.arange(len(X)), math.ceil(len(X) / batch_size))
+        return np.concatenate([self.model.apply(self.params, X[idx]) for idx in idxs])
     
     def evaluate(self, X, Y, batch_size=32, verbose=0):
         indices = np.arange(len(Y))
