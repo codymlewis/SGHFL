@@ -9,3 +9,6 @@ results/
 *.pkl
 .ipynb_checkpoints/
 .virtual_documents
+tags
+Session.vim
+poetry.lock
