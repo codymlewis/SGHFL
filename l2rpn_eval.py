@@ -162,7 +162,7 @@ class TransitionBatch(NamedTuple):
     values: chex.Array
     log_probs: chex.Array
     dones: chex.Array
-    rng: jax.random.PRNGKey
+    rng: np.random.Generator
 
     def init(
             num_timesteps: int,
@@ -181,13 +181,13 @@ class TransitionBatch(NamedTuple):
             np.zeros(n, dtype=np.float32),
             np.zeros(n, dtype=np.float32),
             np.zeros(n, dtype=np.float32),
-            jax.random.PRNGKey(seed),
+            np.random.default_rng(seed),
         )
 
-    def sample(self, batch_size: int = 128) -> TransitionBatch:
-        _rng, rng = jax.random.split(self.rng)
-        idx = jax.random.choice(_rng, jnp.arange(self.obs.shape[0]), shape=(batch_size,), replace=False)
-        return TransitionBatch(
+    def sample(self, batch_size: int = 128) -> TransitionMinibatch:
+        idx_start = self.rng.choice(self.obs.shape[0] - batch_size)
+        idx = np.arange(idx_start, idx_start + batch_size)
+        return TransitionMinibatch(
             self.obs[idx],
             self.client_forecasts[idx],
             self.actions[idx],
@@ -195,8 +195,18 @@ class TransitionBatch(NamedTuple):
             self.values[idx],
             self.log_probs[idx],
             self.dones[idx],
-            rng,
         )
+
+
+class TransitionMinibatch(NamedTuple):
+    "Class to store a minibatch of the transition data."
+    obs: chex.Array
+    client_forecasts: chex.Array
+    actions: chex.Array
+    rewards: chex.Array
+    values: chex.Array
+    log_probs: chex.Array
+    dones: chex.Array
 
 
 @jax.jit
