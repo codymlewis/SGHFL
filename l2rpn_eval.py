@@ -1,9 +1,11 @@
 from __future__ import annotations
+from typing import NamedTuple, Sequence, Tuple
 import collections
 import os
 import itertools
 import logging
-from typing import NamedTuple, Tuple, Iterator
+import math
+import functools
 import grid2op
 from grid2op import Converter
 from lightsim2grid import LightSimBackend
@@ -14,6 +16,7 @@ import flax.linen as nn
 from flax.training import train_state
 import chex
 import optax
+import distrax
 from tqdm import tqdm, trange
 
 logger = logging.getLogger("L2RPN experiment")
@@ -25,6 +28,8 @@ ch.setStream(tqdm)
 ch.terminator = ""
 logger.addHandler(ch)
 
+
+# Federated Learning
 
 class ForecastNet(nn.Module):
     "Neural network for predicting future power load and generation"
@@ -39,25 +44,26 @@ class ForecastNet(nn.Module):
         return x
 
 
-class ForecastBatch(NamedTuple):
-    X: chex.Array
-    Y: chex.Array
-    indexer: Iterator
+class ForecastBatch:
+    def __init__(self, X: chex.Array, Y: chex.Array, index: int):
+        self.X = X
+        self.Y = Y
+        self.i = index
 
     def create(dataset_size: int, forecast_window: int) -> ForecastBatch:
         return ForecastBatch(
             np.zeros((dataset_size, 2 * forecast_window + 2)),
             np.zeros((dataset_size, 2)),
-            itertools.count()
+            0
         )
 
     def add(self, x, y):
-        i = next(self.indexer) % self.Y.shape[0]
-        self.X[i] = x
-        self.Y[i] = y
+        self.i = (self.i + 1) % self.Y.shape[0]
+        self.X[self.i] = x
+        self.Y[self.i] = y
 
     def __len__(self) -> int:
-        return self.Y.shape[0]
+        return min(self.i, self.Y.shape[0])
 
 
 @jax.jit
@@ -92,6 +98,11 @@ class Client:
         )
         self.load_id = load_id
         self.gen_id = gen_id
+        self.forecast_window = forecast_window
+
+    def reset(self):
+        self.past_load = collections.deque([], maxlen=self.forecast_window)
+        self.past_gen = collections.deque([], maxlen=self.forecast_window)
 
 
 def np_indexof(arr, val):
@@ -101,11 +112,157 @@ def np_indexof(arr, val):
     return -1
 
 
+@jax.jit
+def forecast(state, sample):
+    return state.apply_fn(state.params, sample)
+
+
+# Deep reinforcement learning
+
+class ActorCritic(nn.Module):
+    "An Actor Critic neural network model."
+    n_actions: int
+
+    @nn.compact
+    def __call__(self, x: chex.Array) -> chex.Array:
+        actor_mean = nn.Dense(
+            64, kernel_init=nn.initializers.orthogonal(math.sqrt(2)), bias_init=nn.initializers.constant(0.0)
+        )(x)
+        actor_mean = nn.relu(actor_mean)
+        actor_mean = nn.Dense(
+            64, kernel_init=nn.initializers.orthogonal(math.sqrt(2)), bias_init=nn.initializers.constant(0.0)
+        )(actor_mean)
+        actor_mean = nn.relu(actor_mean)
+        actor_mean = nn.Dense(
+            self.n_actions, kernel_init=nn.initializers.orthogonal(0.01), bias_init=nn.initializers.constant(0.0)
+        )(actor_mean)
+        pi = distrax.MultivariateNormalDiag(actor_mean)
+
+        critic = nn.Dense(
+            64, kernel_init=nn.initializers.orthogonal(math.sqrt(2)), bias_init=nn.initializers.constant(0.0)
+        )(x)
+        critic = nn.relu(critic)
+        critic = nn.Dense(
+            64, kernel_init=nn.initializers.orthogonal(math.sqrt(2)), bias_init=nn.initializers.constant(0.0)
+        )(critic)
+        critic = nn.relu(critic)
+        critic = nn.Dense(
+            1, kernel_init=nn.initializers.orthogonal(1.0), bias_init=nn.initializers.constant(0.0)
+        )(critic)
+
+        return pi, jnp.squeeze(critic, axis=-1)
+
+
+class TransitionBatch(NamedTuple):
+    "Class to store the current batch data, and produce minibatchs from it."
+    obs: chex.Array
+    client_forecasts: chex.Array
+    actions: chex.Array
+    rewards: chex.Array
+    values: chex.Array
+    log_probs: chex.Array
+    dones: chex.Array
+    rng: jax.random.PRNGKey
+
+    def init(
+            num_timesteps: int,
+            num_actors: int,
+            num_clients: int,
+            obs_shape: Sequence[int],
+            act_shape: Sequence[int],
+            seed: int = 0,
+    ) -> TransitionBatch:
+        n = num_timesteps * num_actors
+        return TransitionBatch(
+            np.zeros((n,) + obs_shape, dtype=np.float32),
+            np.zeros((n, num_clients, 2), dtype=np.float32),
+            np.zeros((n,) + act_shape, dtype=np.float32),
+            np.zeros(n, dtype=np.float32),
+            np.zeros(n, dtype=np.float32),
+            np.zeros(n, dtype=np.float32),
+            np.zeros(n, dtype=np.float32),
+            jax.random.PRNGKey(seed),
+        )
+
+    def sample(self, batch_size: int = 128) -> TransitionBatch:
+        _rng, rng = jax.random.split(self.rng)
+        idx = jax.random.choice(_rng, jnp.arange(self.obs.shape[0]), shape=(batch_size,), replace=False)
+        return TransitionBatch(
+            self.obs[idx],
+            self.client_forecasts[idx],
+            self.actions[idx],
+            self.rewards[idx],
+            self.values[idx],
+            self.log_probs[idx],
+            self.dones[idx],
+            rng,
+        )
+
+
+@jax.jit
+def rl_learner_step(
+    state: train_state.TrainState,
+    transitions: TransitionBatch,
+    gamma: float = 0.99,
+    lamb: float = 0.95,
+    eps: float = 0.2,
+    coef1: float = 1.0,
+    coef2: float = 0.01,
+) -> Tuple[float, train_state.TrainState]:
+    """
+    This is the last two lines of Algorithm 1 in http://arxiv.org/abs/1707.06347, also including the loss function
+    calculation.
+    """
+    # Calculate advantage
+    samples = jnp.concatenate((transitions.obs, transitions.client_forecasts.reshape(transitions.obs.shape[0], -1)), axis=-1)
+    _, last_val = state.apply_fn(state.params, samples[-1])
+
+    def calc_advantages(last_advantage, done_and_delta):
+        done, delta = done_and_delta
+        advantage = delta + gamma * lamb * done * last_advantage
+        return advantage, advantage
+
+    next_values = jnp.concatenate((transitions.values[1:], last_val.reshape(1)), axis=0)
+    deltas = transitions.rewards + gamma * next_values * transitions.dones - transitions.values
+    _, advantages = jax.lax.scan(calc_advantages, 0.0, (transitions.dones, deltas))
+
+    def loss_fn(params):
+        pis, values = jax.vmap(functools.partial(state.apply_fn, params))(samples)
+        log_probs = jax.vmap(lambda pi, a: pi.log_prob(a))(pis, transitions.actions)
+        # Value loss
+        targets = advantages + transitions.values
+        value_losses = jnp.mean((values - targets)**2)
+        # Actor loss
+        ratio = jnp.exp(log_probs - transitions.log_probs)
+        norm_advantages = (advantages - advantages.mean(-1)) / (advantages.std(-1) + 1e-8)
+        actor_loss1 = (ratio.T * norm_advantages).T
+        actor_loss2 = (jnp.clip(ratio, 1 - eps, 1 + eps).T * norm_advantages).T
+        actor_loss = jnp.mean(jnp.minimum(actor_loss1, actor_loss2))
+        # Entropy loss
+        entropy = jax.vmap(lambda pi: pi.entropy())(pis).mean()
+        # Then the full loss
+        loss = actor_loss - coef1 * value_losses + coef2 * entropy
+        return -loss  # Flip the sign to maximise the loss
+
+    # With that we can calculate a standard gradient descent update
+    loss, grads = jax.value_and_grad(loss_fn)(state.params)
+    state = state.apply_gradients(grads=grads)
+    return loss, state
+
+
+# And now, our experiment
+
 if __name__ == "__main__":
     seed = 64
     rng = np.random.default_rng(seed)
-    num_episodes = 10
+    num_episodes = 100
+    num_actors = 15
+    num_timesteps = 100
     forecast_window = 24
+    fl_batch_size = 128
+    fl_rounds = 20
+    rl_batch_size = 128
+    rl_steps = 10
     env_name = "rte_case14_realistic"  # Change to lrpn_idf_2023
 
     env = grid2op.make(env_name)
@@ -116,8 +273,10 @@ if __name__ == "__main__":
     converter = Converter.ToVect(env.action_space)
     obs_shape = obs.to_vect().shape
     act_shape = (env.action_space.n,)
+
+    flparams_rngkey, rlparams_rngkey, rngkey = jax.random.split(jax.random.PRNGKey(seed), 3)
     forecast_model = ForecastNet()
-    global_params = forecast_model.init(jax.random.PRNGKey(seed), jnp.zeros((1, 2 * forecast_window + 2)))
+    global_params = forecast_model.init(flparams_rngkey, jnp.zeros((1, 2 * forecast_window + 2)))
     clients = [
         Client(
             forecast_model,
@@ -127,37 +286,118 @@ if __name__ == "__main__":
         )
         for si in (set(env.load_to_subid) | set(env.gen_to_subid))
     ]
+    rl_model = ActorCritic(env.action_space.n)
+    rl_state = train_state.TrainState.create(
+        apply_fn=rl_model.apply,
+        params=rl_model.init(rlparams_rngkey, jnp.concatenate((obs.to_vect(), jnp.zeros(2 * len(clients))))),
+        # We use AMSGrad instead of Adam, due to greater stability in noise https://arxiv.org/abs/1904.09237
+        tx=optax.amsgrad(1e-4),
+    )
 
     logger.info("Generating data with simulations of the grid")
     for e in (pbar := trange(num_episodes)):
-        obs = train_env.reset()
-        past_load, past_gen = collections.deque([], maxlen=forecast_window), collections.deque([], maxlen=forecast_window)
-        for i in itertools.count():
-            obs, reward, done, info = train_env.step(converter.convert_act(rng.normal(size=act_shape)))
+        # We generate all of the random generation keys that we will need pre-emptively
+        rngkeys = jax.random.split(rngkey, num_actors * num_timesteps + 1)
+        rngkey = rngkeys[0]
+        rngkeys = iter(rngkeys[1:])
+        # Allocate the memory for our data batch and the index where each sample is stored
+        transitions = TransitionBatch.init(
+            num_timesteps, num_actors, len(clients), obs_shape, act_shape, seed + e
+        )
+        counter = itertools.count()
+        # Now we perform the actor loop from Algorithm 1 in http://arxiv.org/abs/1707.06347
+        for a in range(num_actors):
+            last_obs = train_env.reset()
             for client in clients:
-                load_p = obs.load_p[client.load_id] if client.load_id >= 0 else 0.0
-                gen_p = obs.gen_p[client.gen_id] if client.gen_id >= 0 else 0.0
-                if len(past_load) == forecast_window:
-                    client.data.add(
-                        np.concatenate(
-                            (np.array([obs.hour_of_day, obs.minute_of_hour]), np.array(past_load), np.array(past_gen))),
-                        np.array([load_p, gen_p])
-                    )
-                past_load.append(load_p)
-                past_gen.append(gen_p)
+                client.reset()
+            for t in range(num_timesteps):
+                i = next(counter)
+                pi, transitions.values[i] = rl_state.apply_fn(
+                    rl_state.params,
+                    np.concatenate(
+                        (last_obs.to_vect(), transitions.client_forecasts[max(0, i - 1)].reshape(-1)))
+                )
+                transitions.actions[i] = pi.sample(seed=next(rngkeys))
+                transitions.log_probs[i] = pi.log_prob(transitions.actions[i])
+                obs, transitions.rewards[i], transitions.dones[i], info = train_env.step(
+                    converter.convert_act(transitions.actions[i])
+                )
 
-            if done:
-                break
+                for c, client in enumerate(clients):
+                    load_p = obs.load_p[client.load_id] if client.load_id >= 0 else 0.0
+                    gen_p = obs.gen_p[client.gen_id] if client.gen_id >= 0 else 0.0
+                    if len(client.past_load) == forecast_window:
+                        sample = np.concatenate((
+                            np.array([obs.hour_of_day, obs.minute_of_hour]),
+                            np.array(client.past_load),
+                            np.array(client.past_gen)
+                        ))
+                        client.data.add(sample, np.array([load_p, gen_p]))
+                        transitions.client_forecasts[max(0, i - 1), c] = forecast(client.state, sample)
+                    client.past_load.append(load_p)
+                    client.past_gen.append(gen_p)
 
-    logger.info("Starting federated training of the forecast model")
-    for i in (pbar := trange(1000)):
-        all_params = []
-        all_losses = []
-        for client in clients:
-            client.state = client.state.replace(params=global_params)
-            idx = rng.choice(len(client.data), 128, replace=False)
-            loss, client.state = forecast_learner_step(client.state, client.data.X[idx], client.data.Y[idx])
-            all_params.append(client.state.params)
-            all_losses.append(loss)
-        global_params = fedavg(all_params)
-        pbar.set_postfix_str(f"Loss: {np.mean(all_losses):.5f}")
+                transitions.obs[i] = obs.to_vect()
+                last_obs = obs
+                if transitions.dones[i]:
+                    for client in clients:
+                        client.reset()
+                    last_obs = train_env.reset()
+
+        if len(clients[0].data) >= fl_batch_size * fl_rounds:
+            logger.info("Starting federated training of the forecast model")
+            for _ in range(fl_rounds):
+                all_params = []
+                all_losses = []
+                for client in clients:
+                    client.state = client.state.replace(params=global_params)
+                    idx = rng.choice(len(client.data), fl_batch_size, replace=False)
+                    loss, client.state = forecast_learner_step(client.state, client.data.X[idx], client.data.Y[idx])
+                    all_params.append(client.state.params)
+                    all_losses.append(loss)
+                global_params = fedavg(all_params)
+            logger.info(f"Done. FL Loss: {np.mean(all_losses):.5f}")
+
+        for i in range(rl_steps):
+            trans_batch = transitions.sample(rl_batch_size)
+            loss, rl_state = rl_learner_step(rl_state, trans_batch)
+        pbar.set_postfix_str(f"RL Loss: {loss:.5f}")
+
+    # The testing phase
+    for client in clients:
+        client.state = client.state.replace(params=global_params)
+        client.reset()
+    print("Now, let's see how long the trained model can run the power network.")
+    test_env = grid2op.make(env_name + "_test", backend=LightSimBackend())
+    obs = test_env.reset()
+    client_forecasts = np.zeros((len(clients), 2), dtype=np.float32)
+    times_forecasted = np.array([0 for _ in clients])
+    maes = np.array([0.0 for _ in clients])
+    for i in itertools.count():
+        for c, client in enumerate(clients):
+            load_p = obs.load_p[client.load_id] if client.load_id >= 0 else 0.0
+            gen_p = obs.gen_p[client.gen_id] if client.gen_id >= 0 else 0.0
+            if times_forecasted[c] > 0:
+                maes[c] += np.abs(np.array([load_p, gen_p]) - client_forecasts[c]).mean()
+            client.past_load.append(load_p)
+            client.past_gen.append(gen_p)
+            if len(client.past_load) == forecast_window:
+                sample = np.concatenate((
+                    np.array([obs.hour_of_day, obs.minute_of_hour]),
+                    np.array(client.past_load),
+                    np.array(client.past_gen)
+                ))
+                client_forecasts[c] = forecast(client.state, sample)
+                times_forecasted[c] += 1
+        rngkey, _rngkey = jax.random.split(rngkey)
+        pi, _ = rl_state.apply_fn(rl_state.params, np.concatenate((obs.to_vect(), client_forecasts.reshape(-1))))
+        action = pi.sample(seed=_rngkey)
+        obs, reward, done, info = test_env.step(converter.convert_act(action))
+        obs = obs
+        if done:
+            break
+        if i % 100 == 0 and i > 0:
+            logger.info(f"{i}th test iteration, MAE: {(maes / np.maximum(1, times_forecasted)).mean()}")
+
+    print(f"Ran the network for {i + 1} time steps")
+    print(f"Final MAE of the FL models: {(maes / np.maximum(1, times_forecasted)).mean()}")
