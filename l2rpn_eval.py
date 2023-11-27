@@ -7,6 +7,7 @@ import itertools
 import logging
 import math
 import functools
+import time
 import grid2op
 from grid2op import Converter
 from lightsim2grid import LightSimBackend
@@ -18,6 +19,7 @@ from flax.training import train_state
 import chex
 import optax
 import distrax
+from sklearn import metrics
 from tqdm import tqdm, trange
 
 logger = logging.getLogger("L2RPN experiment")
@@ -292,6 +294,8 @@ def setup_fl(env, num_episodes, forecast_window, seed):
 
 
 def reset_clients(clients):
+    if clients is None:
+        return
     for c in clients:
         c.reset()
 
@@ -334,7 +338,8 @@ def add_data(train_env, converter, rl_state, clients, transitions, num_actors, n
         for t in range(num_timesteps):
             i = next(counter)
             obs = add_rl_data(rl_state, train_env, converter, last_obs, i, transitions, next(rngkeys))
-            add_fl_data(clients, obs, i, transitions, forecast_window)
+            if clients:
+                add_fl_data(clients, obs, i, transitions, forecast_window)
             last_obs = obs
             if transitions.dones[i]:
                 reset_clients(clients)
@@ -343,7 +348,7 @@ def add_data(train_env, converter, rl_state, clients, transitions, num_actors, n
 
 
 def federated_learning(global_params, clients, fl_rounds, fl_batch_size):
-    if len(clients[0].data) >= fl_batch_size * fl_rounds:
+    if clients and len(clients[0].data) >= fl_batch_size * fl_rounds:
         logger.info("Starting federated training of the forecast model")
         for _ in range(fl_rounds):
             all_params = []
@@ -366,21 +371,20 @@ def reinforcement_learning(rl_state, transitions, rl_steps, rl_batch_size):
     return loss, rl_state
 
 
-def test_model(env_name, rl_state, global_params, clients, forecast_window, rngkey):
+def test_fl_and_rl_model(env_name, rl_state, global_params, clients, forecast_window, rngkey):
+    test_env = grid2op.make(env_name + "_test", backend=LightSimBackend())
     for client in clients:
         client.state = client.state.replace(params=global_params)
         client.reset()
-    test_env = grid2op.make(env_name + "_test", backend=LightSimBackend())
     obs = test_env.reset()
-    client_forecasts = np.zeros((len(clients), 2), dtype=np.float32)
-    times_forecasted = np.array([0 for _ in clients])
-    maes = np.array([0.0 for _ in clients])
+    client_forecasts, true_forecasts = [], []
     for i in itertools.count():
+        client_forecasts.append(np.zeros((len(clients), 2), dtype=np.float32))
         for c, client in enumerate(clients):
             load_p = obs.load_p[client.load_id] if client.load_id >= 0 else 0.0
             gen_p = obs.gen_p[client.gen_id] if client.gen_id >= 0 else 0.0
-            if times_forecasted[c] > 0:
-                maes[c] += np.abs(np.array([load_p, gen_p]) - client_forecasts[c]).mean()
+            if i >= forecast_window:
+                true_forecasts.append(np.array([load_p, gen_p]))
             client.past_load.append(load_p)
             client.past_gen.append(gen_p)
             if len(client.past_load) == forecast_window:
@@ -389,18 +393,32 @@ def test_model(env_name, rl_state, global_params, clients, forecast_window, rngk
                     np.array(client.past_load),
                     np.array(client.past_gen)
                 ))
-                client_forecasts[c] = forecast(client.state, sample)
-                times_forecasted[c] += 1
+                client_forecasts[-1][c] = forecast(client.state, sample)
         rngkey, _rngkey = jax.random.split(rngkey)
-        pi, _ = rl_state.apply_fn(rl_state.params, np.concatenate((obs.to_vect(), client_forecasts.reshape(-1))))
+        pi, _ = rl_state.apply_fn(rl_state.params, np.concatenate((obs.to_vect(), client_forecasts[-1].reshape(-1))))
         action = pi.sample(seed=_rngkey)
         obs, reward, done, info = test_env.step(converter.convert_act(action))
-        obs = obs
         if done:
             break
         if i % 100 == 0 and i > 0:
-            logger.info(f"{i}th test iteration, MAE: {(maes / np.maximum(1, times_forecasted)).mean()}")
-    return i + 1, (maes / np.maximum(1, times_forecasted)).mean()
+            logger.info(f"Reached the {i}th test iteration")
+    return i + 1, np.array(client_forecasts[forecast_window - 1:-1]), np.array(true_forecasts)
+
+
+def test_rl_model(env_name, rl_state, rngkey):
+    test_env = grid2op.make(env_name + "_test", backend=LightSimBackend())
+    obs = test_env.reset()
+    for i in itertools.count():
+        rngkey, _rngkey = jax.random.split(rngkey)
+        pi, _ = rl_state.apply_fn(rl_state.params, obs.to_vect())
+        action = pi.sample(seed=_rngkey)
+        obs, reward, done, info = test_env.step(converter.convert_act(action))
+        if done:
+            break
+        if i % 100 == 0 and i > 0:
+            logger.info(f"Reached the {i}th test iteration")
+    logger.info(f"Finished at the {i}th test iteration")
+    return i + 1
 
 
 if __name__ == "__main__":
@@ -417,11 +435,14 @@ if __name__ == "__main__":
                         help="Number of prior forecasts to include in the FL models data to inform its prediction.")
     parser.add_argument("--fl-rounds", type=int, default=10, help="Number of rounds of FL training per episode.")
     parser.add_argument("--fl-batch-size", type=int, default=128, help="Batch size for FL training.")
+    parser.add_argument("--no-fl", action="store_true", help="Specify to not use federated learning for this experiment.")
     args = parser.parse_args()
 
+    start_time = time.time()
     rng = np.random.default_rng(args.seed)
     rngkey = jax.random.PRNGKey(args.seed)
     env_name = "rte_case14_realistic"  # Change to lrpn_idf_2023
+    perform_fl = not args.no_fl
 
     env = grid2op.make(env_name)
     if not os.path.exists(grid2op.get_current_local_dir() + f"/{env_name}_test"):
@@ -432,8 +453,13 @@ if __name__ == "__main__":
     obs_shape = obs.to_vect().shape
     act_shape = (env.action_space.n,)
 
-    global_params, clients = setup_fl(env, args.episodes, args.forecast_window, args.seed)
-    rl_state = create_rl_model(env, obs, len(clients), args.seed)
+    if perform_fl:
+        global_params, clients = setup_fl(env, args.episodes, args.forecast_window, args.seed)
+        num_clients = len(clients)
+    else:
+        global_params, clients = None, None
+        num_clients = 0
+    rl_state = create_rl_model(env, obs, num_clients, args.seed)
 
     logger.info("Generating data with simulations of the grid and training the models")
     for e in (pbar := trange(args.episodes)):
@@ -442,7 +468,7 @@ if __name__ == "__main__":
         rngkey = rngkeys[0]
         # Allocate the memory for our data batch and the index where each sample is stored
         transitions = TransitionBatch.init(
-            args.timesteps, args.actors, len(clients), obs_shape, act_shape, args.seed + e
+            args.timesteps, args.actors, num_clients, obs_shape, act_shape, args.seed + e
         )
         # Now we perform the actor loop from Algorithm 1 in http://arxiv.org/abs/1707.06347
         rl_state = add_data(
@@ -454,15 +480,44 @@ if __name__ == "__main__":
             args.actors,
             args.timesteps,
             args.forecast_window,
-            iter(rngkeys[1:])
+            iter(rngkeys[1:]),
         )
 
-        global_params = federated_learning(global_params, clients, args.fl_rounds, args.fl_batch_size)
+        if perform_fl:
+            global_params = federated_learning(global_params, clients, args.fl_rounds, args.fl_batch_size)
         loss, rl_state = reinforcement_learning(rl_state, transitions, args.rl_steps, args.rl_batch_size)
         pbar.set_postfix_str(f"RL Loss: {loss:.5f}")
 
     # The testing phase
     logger.info("Testing how long the trained model can run the power network.")
-    rl_score, mae = test_model(env_name, rl_state, global_params, clients, args.forecast_window, rngkey)
+    if perform_fl:
+        rl_score, client_forecasts, true_forecasts = test_fl_and_rl_model(
+            env_name, rl_state, global_params, clients, args.forecast_window, rngkey
+        )
+        client_forecasts = client_forecasts.reshape(-1, 2)
+        header = "seed,rl_score,mae,rmse,r2_score"
+        results = "{},{},{},{},{}".format(
+            args.seed,
+            rl_score,
+            metrics.mean_absolute_error(true_forecasts, client_forecasts),
+            math.sqrt(metrics.mean_squared_error(true_forecasts, client_forecasts)),
+            metrics.r2_score(true_forecasts, client_forecasts),
+        )
+    else:
+        rl_score = test_rl_model(env_name, rl_state, rngkey)
+        header = "seed,rl_score"
+        results = f"{args.seed},{rl_score}"
     print(f"Ran the network for {rl_score} time steps")
-    print(f"Final MAE of the FL models: {mae}")
+    logger.info(f"{results=}")
+
+    # Record the results
+    os.makedirs("results", exist_ok=True)
+    filename = f"results/l2rpn{'_fl' if perform_fl else ''}.csv"
+    if not os.path.exists(filename):
+        with open(filename, 'w') as f:
+            f.write(header + "\n")
+    with open(filename, 'a') as f:
+        f.write(results + "\n")
+    print(f"Results written to {filename}")
+
+    print(f"Experiment took {time.time() - start_time} seconds")

@@ -568,7 +568,6 @@ if __name__ == "__main__":
         results['baseline'] = baseline_metrics
         print(f"{baseline_metrics=}")
 
-
     os.makedirs("results", exist_ok=True)
     filename = "results/apartment_{}.json".format(
         '_'.join([f'{k}={v}' for k, v in experiment_config.items() if k not in ['repeat', 'round']]),
