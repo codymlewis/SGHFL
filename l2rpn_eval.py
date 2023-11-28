@@ -14,6 +14,7 @@ from lightsim2grid import LightSimBackend
 import numpy as np
 import jax
 import jax.numpy as jnp
+import jax.scipy as jsp
 import flax.linen as nn
 from flax.training import train_state
 import chex
@@ -89,8 +90,24 @@ def fedavg(all_params):
     return jax.tree_util.tree_map(lambda *x: sum(x) / len(x), *all_params)
 
 
+@jax.jit
+def median(all_params):
+    return jax.tree_util.tree_map(lambda *x: jnp.median(jnp.array(x), axis=0), *all_params)
+
+
+@jax.jit
+def topk(all_params, k=0.5):
+    avg_params = jax.tree_util.tree_map(lambda *x: sum(x) / len(x), *all_params)
+
+    def prune(x):
+        K = round((1 - k) * x.size)
+        return jnp.where(x >= jnp.partition(x.reshape(-1), K)[K], x, 0)
+
+    return jax.tree_util.tree_map(prune, avg_params)
+
+
 class Client:
-    def __init__(self, model, load_id, gen_id, num_episodes, forecast_window, buffer_size: int = 1000):
+    def __init__(self, client_id, model, load_id, gen_id, num_episodes, forecast_window, buffer_size: int = 1000):
         self.past_load = collections.deque([], maxlen=forecast_window)
         self.past_gen = collections.deque([], maxlen=forecast_window)
         self.data = ForecastBatch.create(num_episodes * buffer_size, forecast_window)
@@ -102,22 +119,285 @@ class Client:
         self.load_id = load_id
         self.gen_id = gen_id
         self.forecast_window = forecast_window
+        self.id = client_id
 
     def reset(self):
         self.past_load = collections.deque([], maxlen=self.forecast_window)
         self.past_gen = collections.deque([], maxlen=self.forecast_window)
 
+    def add_data(self, obs, i, transitions):
+        load_p = obs.load_p[self.load_id].sum() if self.load_id is not None else 0.0
+        gen_p = obs.gen_p[self.gen_id].sum() if self.gen_id is not None else 0.0
+        if len(self.past_load) == self.forecast_window:
+            sample = np.concatenate((
+                np.array([obs.hour_of_day, obs.minute_of_hour]),
+                np.array(self.past_load),
+                np.array(self.past_gen),
+            ))
+            self.data.add(sample, np.array([load_p, gen_p]))
+            transitions.client_forecasts[max(0, i - 1), self.id] = forecast(self.state, sample)
+        self.past_load.append(load_p)
+        self.past_gen.append(gen_p)
+
+    def add_test_data(self, obs):
+        true_forecast, predicted_forecast = np.zeros(2), np.zeros(2)
+        load_p = obs.load_p[self.load_id].sum() if self.load_id is not None else 0.0
+        gen_p = obs.gen_p[self.gen_id].sum() if self.gen_id is not None else 0.0
+        if len(self.past_load) == self.forecast_window:
+            true_forecast = np.array([load_p, gen_p])
+        self.past_load.append(load_p)
+        self.past_gen.append(gen_p)
+        if len(self.past_load) == self.forecast_window:
+            sample = np.concatenate((
+                np.array([obs.hour_of_day, obs.minute_of_hour]),
+                np.array(self.past_load),
+                np.array(self.past_gen),
+            ))
+            self.data.add(sample, np.array([load_p, gen_p]))
+            predicted_forecast = forecast(self.state, sample)
+        return true_forecast, predicted_forecast
+
+    def step(self, global_params, batch_size=128):
+        self.state = self.state.replace(params=global_params)
+        idx = rng.choice(len(self.data), batch_size, replace=False)
+        loss, self.state = forecast_learner_step(self.state, self.data.X[idx], self.data.Y[idx])
+        return loss, self.state.params
+
+    def set_params(self, global_params):
+        self.state = self.state.replace(params=global_params)
+
+
+class Server:
+    def __init__(self, model, global_params, clients, rounds, batch_size):
+        self.model = model
+        self.global_params = global_params
+        self.clients = clients
+        self.rounds = rounds
+        self.batch_size = batch_size
+
+    def reset(self):
+        for client in self.clients:
+            client.reset()
+
+    def setup_test(self):
+        for client in self.clients:
+            client.reset()
+            client.set_params(self.global_params)
+
+    def add_data(self, obs, i, transitions):
+        for client in self.clients:
+            client.add_data(obs, i, transitions)
+
+    def add_test_data(self, obs):
+        true_forecasts, predicted_forecasts = [], []
+        for client in self.clients:
+            true_forecast, predicted_forecast = client.add_test_data(obs)
+            if isinstance(true_forecast, list):
+                true_forecasts.extend(true_forecast)
+                predicted_forecasts.extend(predicted_forecast)
+            else:
+                true_forecasts.append(true_forecast)
+                predicted_forecasts.append(predicted_forecast)
+        return np.array(true_forecasts), np.array(predicted_forecasts)
+
+    def step(self):
+        logger.info("Server is starting federated training of the forecast model")
+        for _ in range(self.rounds):
+            all_losses, all_params = self.inner_step()
+            self.global_params = fedavg(all_params)
+        logger.info(f"Done. FL Server Loss: {np.mean(all_losses):.5f}")
+
+    def inner_step(self):
+        all_params = []
+        all_losses = []
+        for client in self.clients:
+            loss, params = client.step(self.global_params, self.batch_size)
+            all_params.append(params)
+            all_losses.append(loss)
+        return all_losses, all_params
+
+    @property
+    def num_clients(self):
+        amount_clients = 0
+        for c in self.clients:
+            if isinstance(c, MiddleServer):
+                amount_clients += len(c.clients)
+            else:
+                amount_clients += 1
+        return amount_clients
+
+
+class KickbackMomentumServer(Server):
+    def __init__(self, *args, mu1=0.9, mu2=0.99):
+        super().__init__(*args)
+        self.momentum = None
+        self.prev_parameters = None
+        self.episode = 0
+        self.mu1 = mu1
+        self.mu2 = mu2
+
+    def step(self):
+        all_losses, all_params = super().inner_step()
+
+        p = self.episode == 0
+        q = self.drop_round is None or self.episode < self.drop_round
+        if p and q:
+            if self.momentum is None:
+                self.momentum = jax.tree_util.tree_map(jnp.zeros_like, super().global_params)
+            else:
+                self.momentum = calc_inner_momentum(self.momentum, super().global_params, self.prev_parameters)
+            self.prev_parameters = super().global_params.copy()
+        self.episode += 1
+        grads = fedavg([tree_sub(cp, super().global_params) for cp in all_params])
+        self.global_params = calc_outer_momentum(self.momentum, grads, self.prev_parameters, self.mu2)
+
+
+@jax.jit
+def calc_inner_momentum(momentum, params, prev_params, mu):
+    return jax.tree_util.tree_map(lambda m, p, pp: mu * m + (p - pp), momentum, params, prev_params)
+
+
+@jax.jit
+def calc_outer_momentum(momentum, grads, prev_params, mu):
+    return jax.tree_util.tree_map(lambda m, g, pp: pp + mu * m + g, momentum, grads, prev_params)
+
+
+@jax.jit
+def tree_sub(tree_a, tree_b):
+    return jax.tree_util.tree_map(lambda a, b: a - b, tree_a, tree_b)
+
+
+class MiddleServer:
+    def __init__(self, clients):
+        self.clients = clients
+
+    def reset(self):
+        for client in self.clients:
+            client.reset()
+
+    def set_params(self, global_params):
+        for client in self.clients:
+            client.set_params(global_params)
+
+    def add_data(self, obs, i, transitions):
+        for client in self.clients:
+            client.add_data(obs, i, transitions)
+
+    def add_test_data(self, obs):
+        true_forecasts, predicted_forecasts = [], []
+        for client in self.clients:
+            true_forecast, predicted_forecast = client.add_test_data(obs)
+            true_forecasts.append(true_forecast)
+            predicted_forecasts.append(predicted_forecast)
+        return true_forecasts, predicted_forecasts
+
+    def step(self, global_params, batch_size):
+        all_params = []
+        all_losses = []
+        for client in self.clients:
+            loss, params = client.step(global_params, batch_size)
+            all_params.append(params)
+            all_losses.append(loss)
+        new_params = fedavg(all_params)
+        new_loss = np.mean(all_losses)
+        return new_loss, new_params
+
 
 def np_indexof(arr, val):
     index = np.where(arr == val)[0]
     if index.size > 0:
-        return index.item()
-    return -1
+        return index
+    return None
 
 
 @jax.jit
 def forecast(state, sample):
     return state.apply_fn(state.params, sample)
+
+
+# FL Adversaries
+
+class EmptyUpdater(Client):
+    def step(self, global_params, batch_size=128):
+        self.state = self.state.replace(params=global_params)
+        idx = rng.choice(len(self.data), batch_size, replace=False)
+        loss, _ = forecast_learner_step(self.state, self.data.X[idx], self.data.Y[idx])
+        return loss, global_params
+
+
+class Adversary(Client):
+    def __init__(
+        self, client_id, model, load_id, gen_id, num_episodes, forecast_window, corroborator, buffer_size: int = 1000
+    ):
+        super().__init__(client_id, model, load_id, gen_id, num_episodes, forecast_window, buffer_size)
+        self.corroborator = corroborator
+        self.corroborator.register(self)
+
+    def honest_step(self, global_params, batch_size=128):
+        return super().step(global_params, batch_size)
+
+
+class LIE(Adversary):
+    def step(self, global_params, batch_size=128):
+        mu, sigma, loss = self.corroborator.calc_grad_stats(global_params, batch_size)
+        return loss, lie(mu, sigma, self.corroborator.z_max)
+
+
+@jax.jit
+def lie(mu, sigma, z_max):
+    return jax.tree_util.tree_map(lambda m, s: m + z_max * s, mu, sigma)
+
+
+class IPM(Adversary):
+    def step(self, global_params, batch_size=128):
+        mu, sigma, loss = self.corroborator.calc_grad_stats(global_params, batch_size)
+        return loss, ipm(global_params, self.corroborator.nadversaries)
+
+
+@jax.jit
+def ipm(params, mu, nadversaries):
+    grads = jax.tree_util.tree_map(lambda p, m: p - m, params, mu)
+    return jax.tree_util.tree_map(lambda p, g: p + (1 / nadversaries) * g, params, grads)
+
+
+class Corroborator:
+    def __init__(self, nclients, nadversaries):
+        self.nclients = nclients
+        self.adversaries = []
+        self.nadversaries = nadversaries
+        self.mu = None
+        self.sigma = None
+        self.loss = None
+        self.parameters = None
+        s = self.nclients // 2 + 1 - self.nadversaries
+        self.z_max = jsp.stats.norm.ppf((self.nclients - s) / self.nclients)
+        self.adv_ids = []
+        self.updated_advs = []
+
+    def register(self, adversary):
+        self.adversaries.append(adversary)
+        self.adv_ids.append(adversary.id)
+
+    def calc_grad_stats(self, global_params, adv_id, batch_size):
+        if self.updated_advs:
+            self.updated_advs.append(adv_id)
+            if set(self.updated_advs) == set(self.adv_ids):  # if everyone has updated, stop using the cached value
+                self.updated_advs = []
+            return self.mu, self.sigma, self.loss
+
+        honest_parameters = []
+        honest_losses = []
+        for a in self.adversaries:
+            loss, parameters = a.honest_step(global_params, batch_size)
+            honest_parameters.append(parameters)
+            honest_losses.append(loss)
+
+        # Does some aggregation
+        self.mu = np.average(honest_parameters, axis=0)
+        self.sigma = np.sqrt(np.average((honest_parameters - self.mu)**2, axis=0))
+        self.loss = np.average(honest_losses)
+        self.updated_advs.append(adv_id)
+        return self.mu, self.sigma, self.loss
 
 
 # Deep reinforcement learning
@@ -272,25 +552,34 @@ def create_rl_model(env, obs, num_clients, seed):
     rl_state = train_state.TrainState.create(
         apply_fn=rl_model.apply,
         params=rl_model.init(jax.random.PRNGKey(seed), jnp.concatenate((obs.to_vect(), jnp.zeros(2 * num_clients)))),
-        # We use AMSGrad instead of Adam, due to greater stability in noise https://arxiv.org/abs/1904.09237
+        # We use AMSGrad instead of Adam due to greater stability in noise https://arxiv.org/abs/1904.09237
         tx=optax.amsgrad(1e-4),
     )
     return rl_state
 
 
-def setup_fl(env, num_episodes, forecast_window, seed):
+def setup_fl(env, num_episodes, forecast_window, fl_rounds, fl_batch_size, num_middle_servers, seed):
     forecast_model = ForecastNet()
     global_params = forecast_model.init(jax.random.PRNGKey(seed), jnp.zeros((1, 2 * forecast_window + 2)))
+    substation_ids = set(env.load_to_subid) | set(env.gen_to_subid)
     clients = [
         Client(
+            i,
             forecast_model,
-            np_indexof(env.load_to_subid, si), np_indexof(env.gen_to_subid, si),
+            np_indexof(env.load_to_subid, si),
+            np_indexof(env.gen_to_subid, si),
             num_episodes,
             forecast_window,
         )
-        for si in (set(env.load_to_subid) | set(env.gen_to_subid))
+        for i, si in enumerate(substation_ids)
     ]
-    return global_params, clients
+    if num_middle_servers:
+        lower_clients = clients
+        ms_cids = np.array_split(np.arange(len(lower_clients)), num_middle_servers)
+        middle_servers = [MiddleServer([lower_clients[i] for i in cids]) for cids in ms_cids]
+        clients = middle_servers  # Middle servers are the clients for the top level server
+    server = Server(forecast_model, global_params, clients, fl_rounds, fl_batch_size)
+    return server
 
 
 def reset_clients(clients):
@@ -314,54 +603,23 @@ def add_rl_data(rl_state, train_env, converter, last_obs, i, transitions, rngkey
     return obs
 
 
-def add_fl_data(clients, obs, i, transitions, forecast_window):
-    for c, client in enumerate(clients):
-        load_p = obs.load_p[client.load_id] if client.load_id >= 0 else 0.0
-        gen_p = obs.gen_p[client.gen_id] if client.gen_id >= 0 else 0.0
-        if len(client.past_load) == forecast_window:
-            sample = np.concatenate((
-                np.array([obs.hour_of_day, obs.minute_of_hour]),
-                np.array(client.past_load),
-                np.array(client.past_gen)
-            ))
-            client.data.add(sample, np.array([load_p, gen_p]))
-            transitions.client_forecasts[max(0, i - 1), c] = forecast(client.state, sample)
-        client.past_load.append(load_p)
-        client.past_gen.append(gen_p)
-
-
-def add_data(train_env, converter, rl_state, clients, transitions, num_actors, num_timesteps, forecast_window, rngkeys):
+def add_data(train_env, converter, rl_state, server, transitions, num_actors, num_timesteps, forecast_window, rngkeys):
     counter = itertools.count()
     for a in range(num_actors):
         last_obs = train_env.reset()
-        reset_clients(clients)
+        if server:
+            server.reset()
         for t in range(num_timesteps):
             i = next(counter)
             obs = add_rl_data(rl_state, train_env, converter, last_obs, i, transitions, next(rngkeys))
-            if clients:
-                add_fl_data(clients, obs, i, transitions, forecast_window)
+            if server:
+                server.add_data(obs, i, transitions)
             last_obs = obs
             if transitions.dones[i]:
-                reset_clients(clients)
+                if server:
+                    server.reset()
                 last_obs = train_env.reset()
     return rl_state
-
-
-def federated_learning(global_params, clients, fl_rounds, fl_batch_size):
-    if clients and len(clients[0].data) >= fl_batch_size * fl_rounds:
-        logger.info("Starting federated training of the forecast model")
-        for _ in range(fl_rounds):
-            all_params = []
-            all_losses = []
-            for client in clients:
-                client.state = client.state.replace(params=global_params)
-                idx = rng.choice(len(client.data), fl_batch_size, replace=False)
-                loss, client.state = forecast_learner_step(client.state, client.data.X[idx], client.data.Y[idx])
-                all_params.append(client.state.params)
-                all_losses.append(loss)
-            global_params = fedavg(all_params)
-        logger.info(f"Done. FL Loss: {np.mean(all_losses):.5f}")
-    return global_params
 
 
 def reinforcement_learning(rl_state, transitions, rl_steps, rl_batch_size):
@@ -371,29 +629,15 @@ def reinforcement_learning(rl_state, transitions, rl_steps, rl_batch_size):
     return loss, rl_state
 
 
-def test_fl_and_rl_model(env_name, rl_state, global_params, clients, forecast_window, rngkey):
+def test_fl_and_rl_model(env_name, rl_state, server, forecast_window, rngkey):
     test_env = grid2op.make(env_name + "_test", backend=LightSimBackend())
-    for client in clients:
-        client.state = client.state.replace(params=global_params)
-        client.reset()
+    server.setup_test()
     obs = test_env.reset()
     client_forecasts, true_forecasts = [], []
     for i in itertools.count():
-        client_forecasts.append(np.zeros((len(clients), 2), dtype=np.float32))
-        for c, client in enumerate(clients):
-            load_p = obs.load_p[client.load_id] if client.load_id >= 0 else 0.0
-            gen_p = obs.gen_p[client.gen_id] if client.gen_id >= 0 else 0.0
-            if i >= forecast_window:
-                true_forecasts.append(np.array([load_p, gen_p]))
-            client.past_load.append(load_p)
-            client.past_gen.append(gen_p)
-            if len(client.past_load) == forecast_window:
-                sample = np.concatenate((
-                    np.array([obs.hour_of_day, obs.minute_of_hour]),
-                    np.array(client.past_load),
-                    np.array(client.past_gen)
-                ))
-                client_forecasts[-1][c] = forecast(client.state, sample)
+        true_forecast, client_forecast = server.add_test_data(obs)
+        true_forecasts.append(true_forecast)
+        client_forecasts.append(client_forecast)
         rngkey, _rngkey = jax.random.split(rngkey)
         pi, _ = rl_state.apply_fn(rl_state.params, np.concatenate((obs.to_vect(), client_forecasts[-1].reshape(-1))))
         action = pi.sample(seed=_rngkey)
@@ -402,7 +646,7 @@ def test_fl_and_rl_model(env_name, rl_state, global_params, clients, forecast_wi
             break
         if i % 100 == 0 and i > 0:
             logger.info(f"Reached the {i}th test iteration")
-    return i + 1, np.array(client_forecasts[forecast_window - 1:-1]), np.array(true_forecasts)
+    return i + 1, np.array(client_forecasts[forecast_window - 1:-1]), np.array(true_forecasts[forecast_window - 1:-1])
 
 
 def test_rl_model(env_name, rl_state, rngkey):
@@ -441,7 +685,7 @@ if __name__ == "__main__":
     start_time = time.time()
     rng = np.random.default_rng(args.seed)
     rngkey = jax.random.PRNGKey(args.seed)
-    env_name = "rte_case14_realistic"  # Change to lrpn_idf_2023
+    env_name = "rte_case14_realistic"  # Change to l2rpn_idf_2023
     perform_fl = not args.no_fl
 
     env = grid2op.make(env_name)
@@ -454,10 +698,10 @@ if __name__ == "__main__":
     act_shape = (env.action_space.n,)
 
     if perform_fl:
-        global_params, clients = setup_fl(env, args.episodes, args.forecast_window, args.seed)
-        num_clients = len(clients)
+        server = setup_fl(env, args.episodes, args.forecast_window, args.fl_rounds, args.fl_batch_size, 10, args.seed)
+        num_clients = server.num_clients
     else:
-        global_params, clients = None, None
+        server = None
         num_clients = 0
     rl_state = create_rl_model(env, obs, num_clients, args.seed)
 
@@ -475,7 +719,7 @@ if __name__ == "__main__":
             train_env,
             converter,
             rl_state,
-            clients,
+            server,
             transitions,
             args.actors,
             args.timesteps,
@@ -484,7 +728,7 @@ if __name__ == "__main__":
         )
 
         if perform_fl:
-            global_params = federated_learning(global_params, clients, args.fl_rounds, args.fl_batch_size)
+            server.step()
         loss, rl_state = reinforcement_learning(rl_state, transitions, args.rl_steps, args.rl_batch_size)
         pbar.set_postfix_str(f"RL Loss: {loss:.5f}")
 
@@ -492,9 +736,10 @@ if __name__ == "__main__":
     logger.info("Testing how long the trained model can run the power network.")
     if perform_fl:
         rl_score, client_forecasts, true_forecasts = test_fl_and_rl_model(
-            env_name, rl_state, global_params, clients, args.forecast_window, rngkey
+            env_name, rl_state, server, args.forecast_window, rngkey
         )
-        client_forecasts = client_forecasts.reshape(-1, 2)
+        client_forecasts = client_forecasts.reshape(-1, 2)[args.forecast_window - 1:-1]
+        true_forecasts = true_forecasts.reshape(-1, 2)[args.forecast_window - 1:-1]
         header = "seed,rl_score,mae,rmse,r2_score"
         results = "{},{},{},{},{}".format(
             args.seed,

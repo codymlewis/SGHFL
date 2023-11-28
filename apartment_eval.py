@@ -165,7 +165,7 @@ class Server:
             "MAE": skm.mean_absolute_error(Y_test, preds),
             "RMSE": np.sqrt(skm.mean_squared_error(Y_test, preds)),
             "r2 score": skm.r2_score(Y_test, preds),
-        }    
+        }
 
 
 def cosine_similarity(client_parameters: List[NDArray]) -> float:
@@ -296,7 +296,7 @@ class TopK:
         flat_grads = np.average([(p - parameters).reshape(-1) for p in client_parameters], weights=client_samples, axis=0)
         if self.agg_top_k is None:
             self.agg_top_k = np.zeros_like(flat_grads)
-        
+
         k = round(len(flat_grads) * (1 - config['top_k']))
         if config['round'] < config["drop_round"]:
             idx = np.where(flat_grads >= np.partition(flat_grads, k)[k])[0]
@@ -323,7 +323,7 @@ class TopKKickbackMomentum:
         flat_grads = np.average([(p - parameters).reshape(-1) for p in client_parameters], weights=client_samples, axis=0)
         if self.agg_top_k is None:
             self.agg_top_k = np.zeros_like(flat_grads)
-        
+
         k = round(len(flat_grads) * (1 - config['top_k']))
         if config['round'] < config["drop_round"]:
             idx = np.where(flat_grads >= np.partition(flat_grads, k)[k])[0]
@@ -378,7 +378,7 @@ class Adversary(Client):
         super().__init__(data)
         self.corroborator = corroborator
         self.corroborator.register(self)
-    
+
     def honest_step(self, parameters, config):
         return super().step(parameters, config)
 
@@ -435,7 +435,7 @@ class Corroborator:
 
     def register(self, adversary):
         self.adversaries.append(adversary)
-    
+
     def calc_grad_stats(self, parameters, config):
         if self.round == config['round']:
             return self.mu, self.sigma, self.loss
@@ -512,9 +512,12 @@ def load_customer_regions():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Perform experiments evaluating the apartment dataset.")
-    parser.add_argument("-i", "--id", type=int, default=1, help="Which of the experiments in the config to perform (counts from 1).")
-    parser.add_argument("-p", "--performance", action="store_true", help="Perform experiments evaluating the performance.")
-    parser.add_argument("-a", "--attack", action="store_true", help="Perform experiments evaluating the vulnerability to and mitigation of attacks.")
+    parser.add_argument("-i", "--id", type=int, default=1,
+                        help="Which of the experiments in the config to perform (counts from 1).")
+    parser.add_argument("-p", "--performance", action="store_true",
+                        help="Perform experiments evaluating the performance.")
+    parser.add_argument("-a", "--attack", action="store_true",
+                        help="Perform experiments evaluating the vulnerability to and mitigation of attacks.")
     parser.add_argument("-f", "--fairness", action="store_true", help="Perform experiments evaluating the fairness.")
     args = parser.parse_args()
 
