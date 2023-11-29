@@ -669,8 +669,7 @@ def reinforcement_learning(rl_state, transitions, rl_steps, rl_batch_size):
     return loss, rl_state
 
 
-def test_fl_and_rl_model(env_name, rl_state, server, forecast_window, rngkey):
-    test_env = grid2op.make(env_name + "_test", backend=LightSimBackend())
+def test_fl_and_rl_model(test_env, rl_state, server, forecast_window, rngkey):
     server.setup_test()
     obs = test_env.reset()
     client_forecasts, true_forecasts = [], []
@@ -689,8 +688,7 @@ def test_fl_and_rl_model(env_name, rl_state, server, forecast_window, rngkey):
     return i + 1, np.array(client_forecasts[forecast_window - 1:-1]), np.array(true_forecasts[forecast_window - 1:-1])
 
 
-def test_rl_model(env_name, rl_state, rngkey):
-    test_env = grid2op.make(env_name + "_test", backend=LightSimBackend())
+def test_rl_model(test_env, rl_state, rngkey):
     obs = test_env.reset()
     for i in itertools.count():
         rngkey, _rngkey = jax.random.split(rngkey)
@@ -721,6 +719,7 @@ if __name__ == "__main__":
     parser.add_argument("--fl-batch-size", type=int, default=128, help="Batch size for FL training.")
     parser.add_argument("--no-fl", action="store_true", help="Specify to not use federated learning for this experiment.")
     parser.add_argument("--num-middle-servers", type=int, default=10, help="Number of middle server for the HFL")
+    parser.add_argument("--fairness", action="store_true", help="Perform the fairness evaluation.")
     args = parser.parse_args()
 
     start_time = time.time()
@@ -730,9 +729,23 @@ if __name__ == "__main__":
     perform_fl = not args.no_fl
 
     env = grid2op.make(env_name)
+    if args.fairness:
+        env_opponent_kwargs = {
+            "opponent_attack_cooldown": 12*24,
+            "opponent_attack_duration": 12*4,
+            "opponent_budget_per_ts": 0.5,
+            "opponent_init_budget": 0.,
+            "opponent_action_class": grid2op.Action.PowerlineSetAction,
+            "opponent_class": grid2op.Opponent.RandomLineOpponent,
+            "opponent_budget_class": grid2op.Opponent.BaseActionBudget,
+            "kwargs_opponent": {"lines_attacked": env.name_line}
+        }
+    else:
+        env_opponent_kwargs = {}
     if not os.path.exists(grid2op.get_current_local_dir() + f"/{env_name}_test"):
         env.train_val_split_random(pct_val=0.0, add_for_test="test", pct_test=10.0)
-    train_env = grid2op.make(env_name + "_train", backend=LightSimBackend())
+    train_env = grid2op.make(env_name + "_train", backend=LightSimBackend(), **env_opponent_kwargs)
+
     obs = train_env.reset()
     converter = Converter.ToVect(env.action_space)
     obs_shape = obs.to_vect().shape
@@ -777,9 +790,10 @@ if __name__ == "__main__":
 
     # The testing phase
     logger.info("Testing how long the trained model can run the power network.")
+    test_env = grid2op.make(env_name + "_test", backend=LightSimBackend(), **env_opponent_kwargs)
     if perform_fl:
         rl_score, client_forecasts, true_forecasts = test_fl_and_rl_model(
-            env_name, rl_state, server, args.forecast_window, rngkey
+            test_env, rl_state, server, args.forecast_window, rngkey
         )
         client_forecasts = client_forecasts.reshape(-1, 2)[args.forecast_window - 1:-1]
         true_forecasts = true_forecasts.reshape(-1, 2)[args.forecast_window - 1:-1]
@@ -792,7 +806,7 @@ if __name__ == "__main__":
             metrics.r2_score(true_forecasts, client_forecasts),
         )
     else:
-        rl_score = test_rl_model(env_name, rl_state, rngkey)
+        rl_score = test_rl_model(test_env, rl_state, rngkey)
         header = "seed,rl_score"
         results = f"{args.seed},{rl_score}"
     print(f"Ran the network for {rl_score} time steps")
