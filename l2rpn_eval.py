@@ -20,6 +20,7 @@ from flax.training import train_state
 import chex
 import optax
 import distrax
+import clax
 from sklearn import metrics
 from tqdm import tqdm, trange
 
@@ -104,6 +105,12 @@ def topk(all_params, k=0.5):
         return jnp.where(x >= jnp.partition(x.reshape(-1), K)[K], x, 0)
 
     return jax.tree_util.tree_map(prune, avg_params)
+
+
+@jax.jit
+def centre(all_params):
+    nclusters = len(all_params) // 4 + 1
+    return jax.tree_util.tree_map(lambda *x: clax.kmeans.fit(jnp.array(x), nclusters)['centroids'].mean(axis=0), *all_params)
 
 
 class Client:
@@ -228,11 +235,12 @@ class Server:
 
 
 class KickbackMomentumServer(Server):
-    def __init__(self, *args, mu1=0.9, mu2=0.99):
+    def __init__(self, *args, drop_round=5, mu1=0.9, mu2=0.5):
         super().__init__(*args)
         self.momentum = None
         self.prev_parameters = None
         self.episode = 0
+        self.drop_round = drop_round
         self.mu1 = mu1
         self.mu2 = mu2
 
@@ -265,6 +273,38 @@ def calc_outer_momentum(momentum, grads, prev_params, mu):
 @jax.jit
 def tree_sub(tree_a, tree_b):
     return jax.tree_util.tree_map(lambda a, b: a - b, tree_a, tree_b)
+
+
+class IntermediateFinetuningServer(Server):
+    def __init__(self, *args, finetune_episodes=5):
+        super().__init__(*args)
+        self.finetune_episodes = finetune_episodes
+
+    def setup_test(self):
+        logger.info("Server is starting finetuning of the forecast model")
+        all_losses = []
+        for client in self.clients:
+            client.set_params(self.global_params)
+            loss, _ = client.step(self.global_params, self.batch_size)
+            all_losses.append(loss)
+            client.reset()
+        logger.info(f"Done. Average Loss: {np.mean(all_losses):.5f}")
+
+
+class KMIFServer(Server):
+    "Kickback momentum + intermediate finetuning server"
+
+    def __init__(self, *args, drop_round=5, mu1=0.9, mu2=0.5, finetune_episodes=5):
+        super().__init__(*args)
+        self.momentum = None
+        self.prev_parameters = None
+        self.episode = 0
+        self.drop_round = drop_round
+        self.mu1 = mu1
+        self.mu2 = mu2
+        self.finetune_episodes = finetune_episodes
+        self.step = lambda: KickbackMomentumServer.step(self)
+        self.setup_test = lambda: IntermediateFinetuningServer.setup_test(self)
 
 
 class MiddleServer:
@@ -680,6 +720,7 @@ if __name__ == "__main__":
     parser.add_argument("--fl-rounds", type=int, default=10, help="Number of rounds of FL training per episode.")
     parser.add_argument("--fl-batch-size", type=int, default=128, help="Batch size for FL training.")
     parser.add_argument("--no-fl", action="store_true", help="Specify to not use federated learning for this experiment.")
+    parser.add_argument("--num-middle-servers", type=int, default=10, help="Number of middle server for the HFL")
     args = parser.parse_args()
 
     start_time = time.time()
@@ -698,7 +739,9 @@ if __name__ == "__main__":
     act_shape = (env.action_space.n,)
 
     if perform_fl:
-        server = setup_fl(env, args.episodes, args.forecast_window, args.fl_rounds, args.fl_batch_size, 10, args.seed)
+        server = setup_fl(
+            env, args.episodes, args.forecast_window, args.fl_rounds, args.fl_batch_size, args.num_middle_servers, args.seed
+        )
         num_clients = server.num_clients
     else:
         server = None

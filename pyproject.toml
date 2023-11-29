@@ -19,6 +19,7 @@ lightsim2grid = "^0.7.5"
 scikit-learn = "^1.3.2"
 numba = "^0.58.1"
 pandapower = { git = "git@github.com:e2nIEE/pandapower.git", branch = "develop" }
+clax = { git = "git@github.com:codymlewis/clax.git" }
 
 [tool.poetry.group.dev.dependencies]
 autopep8 = "^2.0.4"
