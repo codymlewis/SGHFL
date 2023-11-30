@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import NamedTuple, Sequence, Tuple
+from functools import partial
 import argparse
 import collections
 import os
@@ -175,12 +176,29 @@ class Client:
 
 
 class Server:
-    def __init__(self, model, global_params, clients, rounds, batch_size):
+    def __init__(
+        self,
+        model,
+        global_params,
+        clients,
+        rounds,
+        batch_size,
+        aggregate_fn=fedavg,
+        kickback_momentum=False,
+        compute_cs=False,
+        finetune_episodes=0,
+    ):
         self.model = model
         self.global_params = global_params
         self.clients = clients
         self.rounds = rounds
         self.batch_size = batch_size
+        if kickback_momentum:
+            self.aggregate = KickbackMomentum(global_params, aggregate_fn=aggregate_fn)
+        else:
+            self.aggregate = aggregate_fn
+        self.finetune_episodes = finetune_episodes
+        self.compute_cs = compute_cs
 
     def reset(self):
         for client in self.clients:
@@ -188,8 +206,10 @@ class Server:
 
     def setup_test(self):
         for client in self.clients:
-            client.reset()
             client.set_params(self.global_params)
+            for _ in range(self.finetune_episodes):
+                client.step(self.global_params, self.batch_size)
+            client.reset()
 
     def add_data(self, obs, i, transitions):
         for client in self.clients:
@@ -211,8 +231,10 @@ class Server:
         logger.info("Server is starting federated training of the forecast model")
         for _ in range(self.rounds):
             all_losses, all_params = self.inner_step()
-            self.global_params = fedavg(all_params)
+            self.global_params = self.aggregate(all_params)
         logger.info(f"Done. FL Server Loss: {np.mean(all_losses):.5f}")
+        if self.compute_cs:
+            return cosine_similarity(self.global_params, all_params)
 
     def inner_step(self):
         all_params = []
@@ -234,30 +256,24 @@ class Server:
         return amount_clients
 
 
-class KickbackMomentumServer(Server):
-    def __init__(self, *args, drop_round=5, mu1=0.9, mu2=0.5):
-        super().__init__(*args)
+class KickbackMomentum:
+    def __init__(self, global_params, mu1=0.9, mu2=0.1, aggregate_fn=fedavg):
+        self.global_params = global_params
         self.momentum = None
         self.prev_parameters = None
-        self.episode = 0
-        self.drop_round = drop_round
         self.mu1 = mu1
         self.mu2 = mu2
+        self.aggregate = aggregate_fn
 
-    def step(self):
-        all_losses, all_params = super().inner_step()
-
-        p = self.episode == 0
-        q = self.drop_round is None or self.episode < self.drop_round
-        if p and q:
-            if self.momentum is None:
-                self.momentum = jax.tree_util.tree_map(jnp.zeros_like, super().global_params)
-            else:
-                self.momentum = calc_inner_momentum(self.momentum, super().global_params, self.prev_parameters)
-            self.prev_parameters = super().global_params.copy()
-        self.episode += 1
-        grads = fedavg([tree_sub(cp, super().global_params) for cp in all_params])
-        self.global_params = calc_outer_momentum(self.momentum, grads, self.prev_parameters, self.mu2)
+    def __call__(self, all_params):
+        if self.momentum is None:
+            self.momentum = jax.tree_util.tree_map(jnp.zeros_like, self.global_params)
+        else:
+            self.momentum = calc_inner_momentum(self.momentum, self.global_params, self.prev_parameters, self.mu1)
+        self.prev_parameters = self.global_params.copy()
+        grads = self.aggregate([tree_sub(cp, self.global_params) for cp in all_params])
+        self.global_params = calc_outer_momentum(self.momentum, grads, self.global_params, self.mu2)
+        return self.global_params
 
 
 @jax.jit
@@ -275,41 +291,19 @@ def tree_sub(tree_a, tree_b):
     return jax.tree_util.tree_map(lambda a, b: a - b, tree_a, tree_b)
 
 
-class IntermediateFinetuningServer(Server):
-    def __init__(self, *args, finetune_episodes=5):
-        super().__init__(*args)
-        self.finetune_episodes = finetune_episodes
-
-    def setup_test(self):
-        logger.info("Server is starting finetuning of the forecast model")
-        all_losses = []
-        for client in self.clients:
-            client.set_params(self.global_params)
-            loss, _ = client.step(self.global_params, self.batch_size)
-            all_losses.append(loss)
-            client.reset()
-        logger.info(f"Done. Average Loss: {np.mean(all_losses):.5f}")
-
-
-class KMIFServer(Server):
-    "Kickback momentum + intermediate finetuning server"
-
-    def __init__(self, *args, drop_round=5, mu1=0.9, mu2=0.5, finetune_episodes=5):
-        super().__init__(*args)
-        self.momentum = None
-        self.prev_parameters = None
-        self.episode = 0
-        self.drop_round = drop_round
-        self.mu1 = mu1
-        self.mu2 = mu2
-        self.finetune_episodes = finetune_episodes
-        self.step = lambda: KickbackMomentumServer.step(self)
-        self.setup_test = lambda: IntermediateFinetuningServer.setup_test(self)
+def cosine_similarity(global_params, client_parameters):
+    client_grads = [jax.flatten_util.ravel_pytree(tree_sub(global_params, cp))[0] for cp in client_parameters]
+    similarity_matrix = np.abs(metrics.pairwise.cosine_similarity(client_grads)) - np.eye(len(client_grads))
+    return similarity_matrix.sum() / (len(client_grads) * (len(client_grads) - 1))
 
 
 class MiddleServer:
-    def __init__(self, clients):
+    def __init__(self, global_params, clients, aggregate_fn=fedavg, kickback_momentum=False):
         self.clients = clients
+        if kickback_momentum:
+            self.aggregate = KickbackMomentum(global_params, aggregate_fn=aggregate_fn)
+        else:
+            self.aggregate = aggregate_fn
 
     def reset(self):
         for client in self.clients:
@@ -338,7 +332,7 @@ class MiddleServer:
             loss, params = client.step(global_params, batch_size)
             all_params.append(params)
             all_losses.append(loss)
-        new_params = fedavg(all_params)
+        new_params = self.aggregate(all_params)
         new_loss = np.mean(all_losses)
         return new_loss, new_params
 
@@ -379,7 +373,7 @@ class Adversary(Client):
 
 class LIE(Adversary):
     def step(self, global_params, batch_size=128):
-        mu, sigma, loss = self.corroborator.calc_grad_stats(global_params, batch_size)
+        mu, sigma, loss = self.corroborator.calc_grad_stats(global_params, self.id, batch_size)
         return loss, lie(mu, sigma, self.corroborator.z_max)
 
 
@@ -390,7 +384,7 @@ def lie(mu, sigma, z_max):
 
 class IPM(Adversary):
     def step(self, global_params, batch_size=128):
-        mu, sigma, loss = self.corroborator.calc_grad_stats(global_params, batch_size)
+        mu, sigma, loss = self.corroborator.calc_grad_stats(global_params, self.id, batch_size)
         return loss, ipm(global_params, self.corroborator.nadversaries)
 
 
@@ -433,11 +427,18 @@ class Corroborator:
             honest_losses.append(loss)
 
         # Does some aggregation
-        self.mu = np.average(honest_parameters, axis=0)
-        self.sigma = np.sqrt(np.average((honest_parameters - self.mu)**2, axis=0))
+        self.mu = fedavg(honest_parameters)
+        self.sigma = tree_std(honest_parameters, self.mu)
         self.loss = np.average(honest_losses)
         self.updated_advs.append(adv_id)
         return self.mu, self.sigma, self.loss
+
+
+def tree_std(trees, tree_mean):
+    diffs = [jax.tree_util.tree_map(lambda p, m: (p - m)**2, tree, tree_mean) for tree in trees]
+    var = jax.tree_util.tree_map(lambda *x: sum(x) / len(x), *diffs)
+    std = jax.tree_util.tree_map(lambda x: jnp.sqrt(x), var)
+    return std
 
 
 # Deep reinforcement learning
@@ -598,12 +599,38 @@ def create_rl_model(env, obs, num_clients, seed):
     return rl_state
 
 
-def setup_fl(env, num_episodes, forecast_window, fl_rounds, fl_batch_size, num_middle_servers, seed):
+def setup_fl(
+    env,
+    num_episodes,
+    forecast_window,
+    fl_rounds,
+    fl_batch_size,
+    num_middle_servers,
+    server_aggregator="fedavg",
+    middle_server_aggregator="fedavg",
+    server_km=False,
+    middle_server_km=False,
+    intermediate_finetuning=0,
+    compute_cs=False,
+    attack="",
+    seed=0
+):
     forecast_model = ForecastNet()
     global_params = forecast_model.init(jax.random.PRNGKey(seed), jnp.zeros((1, 2 * forecast_window + 2)))
     substation_ids = set(env.load_to_subid) | set(env.gen_to_subid)
+
+    if attack == "":
+        adversary_type = Client
+    elif attack == "empty":
+        adversary_type = EmptyUpdater
+    else:
+        corroborator = Corroborator(len(substation_ids), round(len(substation_ids) * (1 - 0.5)))
+        if attack == "lie":
+            adversary_type = partial(LIE, corroborator=corroborator)
+        elif attack == "ipm":
+            adversary_type = partial(IPM, corroborator=corroborator)
     clients = [
-        Client(
+        (adversary_type if i + 1 > (len(substation_ids) * 0.5) else Client)(
             i,
             forecast_model,
             np_indexof(env.load_to_subid, si),
@@ -616,9 +643,27 @@ def setup_fl(env, num_episodes, forecast_window, fl_rounds, fl_batch_size, num_m
     if num_middle_servers:
         lower_clients = clients
         ms_cids = np.array_split(np.arange(len(lower_clients)), num_middle_servers)
-        middle_servers = [MiddleServer([lower_clients[i] for i in cids]) for cids in ms_cids]
+        middle_servers = [
+            MiddleServer(
+                global_params,
+                [lower_clients[i] for i in cids],
+                aggregate_fn=globals()[middle_server_aggregator],
+                kickback_momentum=middle_server_km,
+            )
+            for cids in ms_cids
+        ]
         clients = middle_servers  # Middle servers are the clients for the top level server
-    server = Server(forecast_model, global_params, clients, fl_rounds, fl_batch_size)
+    server = Server(
+        forecast_model,
+        global_params,
+        clients,
+        fl_rounds,
+        fl_batch_size,
+        kickback_momentum=server_km,
+        compute_cs=compute_cs,
+        finetune_episodes=intermediate_finetuning,
+        aggregate_fn=globals()[server_aggregator],
+    )
     return server
 
 
@@ -717,10 +762,22 @@ if __name__ == "__main__":
                         help="Number of prior forecasts to include in the FL models data to inform its prediction.")
     parser.add_argument("--fl-rounds", type=int, default=10, help="Number of rounds of FL training per episode.")
     parser.add_argument("--fl-batch-size", type=int, default=128, help="Batch size for FL training.")
+    parser.add_argument("--fl-server-km", action="store_true", help="Use Kickback momentum at the FL server")
+    parser.add_argument("--fl-middle-server-km", action="store_true", help="Use Kickback momentum at the FL middle server")
+    parser.add_argument("--intermediate-finetuning", type=int, default=0,
+                        help="Finetune the FL models for n episodes prior to testing")
+    parser.add_argument("--fl-server-aggregator", type=str, default="fedavg",
+                        help="Aggregation algorithm to use at the FL server.")
+    parser.add_argument("--fl-middle-server-aggregator", type=str, default="fedavg",
+                        help="Aggregation algorithm to use at the FL middle server.")
     parser.add_argument("--no-fl", action="store_true", help="Specify to not use federated learning for this experiment.")
     parser.add_argument("--num-middle-servers", type=int, default=10, help="Number of middle server for the HFL")
     parser.add_argument("--fairness", action="store_true", help="Perform the fairness evaluation.")
+    parser.add_argument("--attack", type=str, default="",
+                        help="Perform model poisoning on the federated learning model.")
     args = parser.parse_args()
+
+    print(f"Running experiment with {vars(args)}")
 
     start_time = time.time()
     rng = np.random.default_rng(args.seed)
@@ -753,7 +810,20 @@ if __name__ == "__main__":
 
     if perform_fl:
         server = setup_fl(
-            env, args.episodes, args.forecast_window, args.fl_rounds, args.fl_batch_size, args.num_middle_servers, args.seed
+            env,
+            args.episodes,
+            args.forecast_window,
+            args.fl_rounds,
+            args.fl_batch_size,
+            args.num_middle_servers,
+            server_aggregator=args.fl_server_aggregator,
+            server_km=args.fl_server_km,
+            middle_server_aggregator=args.fl_middle_server_aggregator,
+            middle_server_km=args.fl_middle_server_km,
+            intermediate_finetuning=args.intermediate_finetuning,
+            compute_cs=not args.attack and not args.fairness,
+            attack=args.attack,
+            seed=args.seed,
         )
         num_clients = server.num_clients
     else:
@@ -784,7 +854,7 @@ if __name__ == "__main__":
         )
 
         if perform_fl:
-            server.step()
+            cs = server.step()
         loss, rl_state = reinforcement_learning(rl_state, transitions, args.rl_steps, args.rl_batch_size)
         pbar.set_postfix_str(f"RL Loss: {loss:.5f}")
 
@@ -805,6 +875,9 @@ if __name__ == "__main__":
             math.sqrt(metrics.mean_squared_error(true_forecasts, client_forecasts)),
             metrics.r2_score(true_forecasts, client_forecasts),
         )
+        if cs:
+            header += ",cosine_similarity"
+            results += f",{cs}"
     else:
         rl_score = test_rl_model(test_env, rl_state, rngkey)
         header = "seed,rl_score"
@@ -812,9 +885,13 @@ if __name__ == "__main__":
     print(f"Ran the network for {rl_score} time steps")
     logger.info(f"{results=}")
 
+    header += ",args"
+    results += f",{vars(args)}"
+
     # Record the results
     os.makedirs("results", exist_ok=True)
-    filename = f"results/l2rpn{'_fl' if perform_fl else ''}.csv"
+    file_suffix = "attack" if args.attack else "fairness" if args.fairness else "performance"
+    filename = f"results/l2rpn{'_fl' if perform_fl else ''}_{file_suffix}.csv"
     if not os.path.exists(filename):
         with open(filename, 'w') as f:
             f.write(header + "\n")
