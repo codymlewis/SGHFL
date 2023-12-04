@@ -12,8 +12,8 @@ def env_process(json_file):
     env_name = env_name.replace('num episodes', "$E$")
     env_name = env_name.replace("mu1", r"$\mu_1$")
     env_name = env_name.replace("mu2", r"$\mu_2$")
-    env_name = re.sub("num epochs=\d", "", env_name)
-    env_name = re.sub("num finetune episodes=\d", "IF", env_name)
+    env_name = re.sub(r"num epochs=\d", "", env_name)
+    env_name = re.sub(r"num finetune episodes=\d", "IF", env_name)
     return env_name
 
 
@@ -37,7 +37,8 @@ def format_final_table(styler):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Create a LaTeX table from the solar home or apartment experiment results.")
-    parser.add_argument("-d", "--dataset", type=str, default="solar_home", help="Specify a dataset to tabulate the results from.")
+    parser.add_argument("-d", "--dataset", type=str, default="solar_home",
+                        help="Specify a dataset to tabulate the results from.")
     parser.add_argument("-f", "--fairness", action="store_true", help="Use the fairness experiment results.")
     parser.add_argument("-p", "--performance", action="store_true", help="Use the performance experiment results.")
     parser.add_argument("-a", "--attack", action="store_true", help="Use the attack experiment results.")

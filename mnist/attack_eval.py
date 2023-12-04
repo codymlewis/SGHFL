@@ -3,13 +3,11 @@ from functools import partial
 import gc
 import json
 import numpy as np
-import einops
 from tqdm.auto import trange
 
 import flagon
 from flagon.strategy import FedAVG
-from flagon.common import Config, Parameters, Metrics, count_clients, to_attribute_array
-from flagon.strategy import FedAVG
+from flagon.common import count_clients
 
 import src
 
@@ -81,7 +79,6 @@ def bd_create_sh_clients(create_model_fn, network_arch, client_type, nadversarie
 
 
 def experiment(config):
-    results = {}
     if config['dataset'] == "fmnist":
         data = src.load_data.mnist()
         if config.get("from_y"):
@@ -115,7 +112,7 @@ def experiment(config):
         "solar_home": src.common.create_solar_home_model
     }[config['dataset']]
 
-    for i in (pbar := trange(config['repeat'])):
+    for i in trange(config['repeat']):
         seed = round(np.pi**i + np.exp(i)) % 2**32
         server = flagon.Server(
             create_model_fn().get_parameters(),
@@ -154,8 +151,10 @@ def experiment(config):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Perform experiments evaluating attacks upon FL.")
-    parser.add_argument("-i", "--id", type=int, default=1, help="Which of the experiments in the config to perform (counts from 1).")
-    parser.add_argument("-d", "--dataset", type=str, default="fmnist", help="Which of the datasets to perform the experiment with.")
+    parser.add_argument("-i", "--id", type=int, default=1,
+                        help="Which of the experiments in the config to perform (counts from 1).")
+    parser.add_argument("-d", "--dataset", type=str, default="fmnist",
+                        help="Which of the datasets to perform the experiment with.")
     args = parser.parse_args()
 
     with open("configs/attack.json", 'r') as f:

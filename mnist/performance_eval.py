@@ -5,7 +5,7 @@ import sklearn.metrics as skm
 from tqdm.auto import trange
 
 import flagon
-from flagon.common import Config, Parameters, Metrics, count_clients
+from flagon.common import count_clients
 
 import src
 

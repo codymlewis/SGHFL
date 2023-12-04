@@ -1,4 +1,3 @@
-from typing import Iterable
 import argparse
 import matplotlib.pyplot as plt
 import json
@@ -40,11 +39,10 @@ def plot_boxplot(results, key, train=True, save=True):
         plt.show()
 
 
-
 def plot_attack_results(results, key, train=False, save=True):
     line_symbols = itertools.cycle(['-o', '-s', '-^', '-x', '-d', '-p', '-*'])
     for agg, agg_results in results.items():
-        agg_results = agg_results['train' if train  else 'test']
+        agg_results = agg_results['train' if train else 'test']
         plot_data = np.array([np.mean([d[key] for d in vd]) for vd in agg_results.values()])
         plt.plot(agg_results.keys(), plot_data, next(line_symbols), label=agg)
     plt.xlabel("Round")
@@ -69,7 +67,8 @@ def plot_attack_results(results, key, train=False, save=True):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot experiment results")
     parser.add_argument('-s', "--save", action="store_true", help="Save the plots to png files.")
-    parser.add_argument('-g', "--gradient-similarity", action="store_true", help="Consider the gradient similarity experiment results")
+    parser.add_argument('-g', "--gradient-similarity", action="store_true",
+                        help="Consider the gradient similarity experiment results")
     parser.add_argument('-f', "--fairness", action="store_true", help="Consider the fairness experiment results")
     parser.add_argument('-a', "--attack", action="store_true", help="Consider the attack experiment results")
     args = parser.parse_args()
@@ -91,7 +90,7 @@ if __name__ == "__main__":
 
         with open("results/fairness_r5_e1_s1_dr6.json", "r") as f:
             no_drop_results = json.load(f)
-        
+
         results = {"Drop": drop_results, "Without Drop": no_drop_results}
 
         plot_boxplot(results, "accuracy", train=False, save=args.save)
@@ -99,7 +98,7 @@ if __name__ == "__main__":
 
         plot_boxplot(results, "accuracy std", train=False, save=args.save)
         plot_boxplot(results, "crossentropy_loss std", train=False, save=args.save)
-    
+
     if args.attack:
         json_files = [f for f in os.listdir('results') if 'attack' in f and 'eval_every=1' in f]
 

@@ -171,7 +171,7 @@ class Server:
             "MAE": skm.mean_absolute_error(Y_test, preds),
             "RMSE": np.sqrt(skm.mean_squared_error(Y_test, preds)),
             "r2 score": skm.r2_score(Y_test, preds),
-        }    
+        }
 
 
 def cosine_similarity(client_parameters: List[NDArray]) -> float:
@@ -524,8 +524,10 @@ def load_customer_regions():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Perform experiments evaluating the solar home dataset.")
     parser.add_argument("-i", "--id", type=int, default=1, help="Which of the experiments in the config to perform (counts from 1).")
-    parser.add_argument("-p", "--performance", action="store_true", help="Perform experiments evaluating the performance.")
-    parser.add_argument("-a", "--attack", action="store_true", help="Perform experiments evaluating the vulnerability to and mitigation of attacks.")
+    parser.add_argument("-p", "--performance", action="store_true",
+                        help="Perform experiments evaluating the performance.")
+    parser.add_argument("-a", "--attack", action="store_true",
+                        help="Perform experiments evaluating the vulnerability to and mitigation of attacks.")
     parser.add_argument("-f", "--fairness", action="store_true", help="Perform experiments evaluating the fairness.")
     args = parser.parse_args()
 
@@ -581,7 +583,6 @@ if __name__ == "__main__":
     elif args.fairness:
         results['baseline'] = baseline_metrics
         print(f"{baseline_metrics=}")
-
 
     os.makedirs("results", exist_ok=True)
     filename = "results/solar_home_{}.json".format(

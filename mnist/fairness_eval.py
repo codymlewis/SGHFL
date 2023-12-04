@@ -1,12 +1,9 @@
 import argparse
 import json
-import datasets
 import numpy as np
 from tqdm.auto import trange
 
 import flagon
-from flagon.strategy import FedAVG
-from flagon.common import Config, Parameters, Metrics, count_clients
 
 import src
 
@@ -18,7 +15,6 @@ def create_clients(data, create_model_fn, network_arch, seed=None):
     rng = np.random.default_rng(seed)
     idx = iter(src.common.regional_distribution(data['train']['Y'], network_arch, rng))
     test_idx = iter(src.common.regional_test_distribution(data['test']['Y'], network_arch))
-    nclients = count_clients(network_arch)
     data = data.normalise()
 
     def create_client(client_id: str):
@@ -104,9 +100,13 @@ def fairness_analytics(client_metrics, client_samples, config):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Perform experiments evaluating the fairness when clients drop out from colloboration.")
-    parser.add_argument("-i", "--id", type=int, default=1, help="Which of the experiments in the config to perform (counts from 1).")
-    parser.add_argument("-d", "--dataset", type=str, default="fmnist", help="Which of the datasets to perform the experiment with.")
+    parser = argparse.ArgumentParser(
+        description="Perform experiments evaluating the fairness when clients drop out from colloboration."
+    )
+    parser.add_argument("-i", "--id", type=int, default=1,
+                        help="Which of the experiments in the config to perform (counts from 1).")
+    parser.add_argument("-d", "--dataset", type=str, default="fmnist",
+                        help="Which of the datasets to perform the experiment with.")
     args = parser.parse_args()
 
     with open("configs/fairness.json", 'r') as f:
