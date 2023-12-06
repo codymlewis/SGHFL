@@ -3,9 +3,7 @@ import json
 import numpy as np
 from tqdm.auto import trange
 
-import flagon
-
-import src
+import fl
 
 import os
 os.makedirs("results", exist_ok=True)
@@ -13,55 +11,55 @@ os.makedirs("results", exist_ok=True)
 
 def create_clients(data, create_model_fn, network_arch, seed=None):
     rng = np.random.default_rng(seed)
-    idx = iter(src.common.regional_distribution(data['train']['Y'], network_arch, rng))
-    test_idx = iter(src.common.regional_test_distribution(data['test']['Y'], network_arch))
+    idx = iter(fl.common.regional_distribution(data['train']['Y'], network_arch, rng))
+    test_idx = iter(fl.common.regional_test_distribution(data['test']['Y'], network_arch))
     data = data.normalise()
 
     def create_client(client_id: str):
-        return src.client.Client(data.select({"train": next(idx), "test": next(test_idx)}), create_model_fn, seed)
+        return fl.client.Client(data.select({"train": next(idx), "test": next(test_idx)}), create_model_fn, seed)
     return create_client
 
 
 def experiment(config):
     aggregate_results = []
     test_results = []
-    data = src.load_data.mnist()
+    data = fl.load_data.mnist()
     data = data.normalise()
     for i in (pbar := trange(config['repeat'])):
         seed = round(np.pi**i + np.exp(i)) % 2**32
         if config.get("adaptive_loss"):
-            server_class = src.server.Adaptive
+            server_class = fl.server.Adaptive
         else:
-            server_class = flagon.Server
+            server_class = fl.Server
 
         if config.get("bottom_k") and config.get('mu1'):
-            strategy_class = src.strategy.BottomKFreezingMomentum
+            strategy_class = fl.strategy.BottomKFreezingMomentum
         elif config.get("bottom_k"):
-            strategy_class = src.strategy.BottomK
+            strategy_class = fl.strategy.BottomK
         elif config.get("top_k") and config.get('mu1'):
-            strategy_class = src.strategy.TopKFreezingMomentum
+            strategy_class = fl.strategy.TopKFreezingMomentum
         elif config.get("top_k"):
-            strategy_class = src.strategy.TopK
+            strategy_class = fl.strategy.TopK
         elif config.get('mu1'):
-            strategy_class = src.strategy.FreezingMomentum
+            strategy_class = fl.strategy.FreezingMomentum
         else:
-            strategy_class = flagon.server.FedAVG
+            strategy_class = fl.server.FedAVG
 
         experiment_server = server_class(
-            src.common.create_fmnist_model().get_parameters(),
+            fl.common.create_fmnist_model().get_parameters(),
             config,
-            client_manager=src.server.DroppingClientManager(config['drop_round'], seed=seed),
-            strategy=flagon.server.FedAVG()
+            client_manager=fl.server.DroppingClientManager(config['drop_round'], seed=seed),
+            strategy=fl.server.FedAVG()
         )
 
         if config.get("num_finetune_episodes") and config.get("adaptive_loss"):
-            middle_server_class = src.middle_server.AdaptiveLossIntermediateFineTuner
+            middle_server_class = fl.middle_server.AdaptiveLossIntermediateFineTuner
         elif config.get("num_finetune_episodes"):
-            middle_server_class = src.middle_server.IntermediateFineTuner
+            middle_server_class = fl.middle_server.IntermediateFineTuner
         elif config.get("adaptive_loss"):
-            middle_server_class = src.middle_server.AdaptiveLoss
+            middle_server_class = fl.middle_server.AdaptiveLoss
         else:
-            middle_server_class = flagon.MiddleServer
+            middle_server_class = fl.MiddleServer
 
         network_arch = {
             "clients": [
@@ -72,9 +70,9 @@ def experiment(config):
                 } for _ in range(5)
             ]
         }
-        history = flagon.start_simulation(
+        history = fl.start_simulation(
             experiment_server,
-            create_clients(data, src.common.create_fmnist_model, network_arch, seed=seed),
+            create_clients(data, fl.common.create_fmnist_model, network_arch, seed=seed),
             network_arch
         )
         agg_res = {config['num_rounds']: history.aggregate_history[config['num_rounds']]}
@@ -110,7 +108,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     with open("configs/fairness.json", 'r') as f:
-        experiment_config = src.common.get_experiment_config(json.load(f), args.id)
+        experiment_config = fl.common.get_experiment_config(json.load(f), args.id)
     print(f"Using config: {experiment_config}")
     experiment_config["analytics"] = [fairness_analytics]
     experiment_config["dataset"] = args.dataset

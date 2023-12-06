@@ -5,11 +5,9 @@ import json
 import numpy as np
 from tqdm.auto import trange
 
-import flagon
-from flagon.strategy import FedAVG
-from flagon.common import count_clients
-
-import src
+import fl
+from fl.strategy import FedAVG
+from fl.common import count_clients
 
 import os
 os.makedirs("results", exist_ok=True)
@@ -18,11 +16,11 @@ os.makedirs("results", exist_ok=True)
 def create_clients(data, create_model_fn, network_arch, client_type, nadversaries, adversary_type, seed=None):
     Y = data['train']['Y']
     rng = np.random.default_rng(seed)
-    idx = iter(src.common.lda(Y, count_clients(network_arch), rng, alpha=1000))
+    idx = iter(fl.common.lda(Y, count_clients(network_arch), rng, alpha=1000))
     nclients = count_clients(network_arch)
-    corroborator = src.attacks.Corroborator(nclients)
+    corroborator = fl.attacks.Corroborator(nclients)
 
-    def create_client(client_id: str) -> src.client.Client:
+    def create_client(client_id: str) -> fl.client.Client:
         if int(client_id) > (nclients - nadversaries - 1):
             return adversary_type(
                 data.select({"train": next(idx), "test": np.arange(len(data['test']))}),
@@ -37,32 +35,32 @@ def create_clients(data, create_model_fn, network_arch, client_type, nadversarie
 
 
 def create_sh_clients(create_model_fn, network_arch, nadversaries, client_type, adversary_type, seed=None):
-    get_customer_data = src.load_data.solar_home()
+    get_customer_data = fl.load_data.solar_home()
     nclients = count_clients(network_arch)
-    corroborator = src.attacks.Corroborator(nclients)
+    corroborator = fl.attacks.Corroborator(nclients)
 
-    def create_client(client_id: str) -> src.client.Client:
+    def create_client(client_id: str) -> fl.client.Client:
         cid = int(client_id)
         client_X, client_Y = get_customer_data(cid + 1)
-        client_data = src.data_manager.Dataset({
+        client_data = fl.data_manager.Dataset({
             "train": {"X": client_X[:300 * 24], "Y": client_Y[:300 * 24]},
             "test": {"X": client_X[300 * 24:], "Y": client_Y[300 * 24:]}
         })
         if cid > (nclients - nadversaries - 1):
             return adversary_type(client_data, create_model_fn, corroborator, seed=seed)
-        return src.client.Client(client_data, create_model_fn, seed=seed)
+        return fl.client.Client(client_data, create_model_fn, seed=seed)
     return create_client
 
 
 def bd_create_sh_clients(create_model_fn, network_arch, client_type, nadversaries, adversary_type, seed=None):
-    get_customer_data = src.load_data.solar_home()
+    get_customer_data = fl.load_data.solar_home()
     nclients = count_clients(network_arch)
-    corroborator = src.attacks.Corroborator(nclients)
+    corroborator = fl.attacks.Corroborator(nclients)
 
-    def create_client(client_id: str) -> src.client.Client:
+    def create_client(client_id: str) -> fl.client.Client:
         cid = int(client_id)
         client_X, client_Y = get_customer_data(cid + 1)
-        client_data = src.data_manager.Dataset({
+        client_data = fl.data_manager.Dataset({
             "train": {"X": client_X[:300 * 24], "Y": client_Y[:300 * 24]},
             "test": {"X": client_X[300 * 24:], "Y": client_Y[300 * 24:]}
         })
@@ -71,21 +69,21 @@ def bd_create_sh_clients(create_model_fn, network_arch, client_type, nadversarie
             "train": client_data['train']['X'][:, -1, 3] > 0.9,
             "test": client_data['test']['X'][:, -1, 3] > 0.9
         }
-        client_data = client_data.map(src.attacks.sh_backdoor_mapping())
+        client_data = client_data.map(fl.attacks.sh_backdoor_mapping())
         if cid > (nclients - nadversaries - 1):
             return adversary_type(client_data, create_model_fn, corroborator, backdoor_idx, seed=seed)
-        return src.attacks.BackdoorClient(client_data, create_model_fn, backdoor_idx, seed=seed)
+        return fl.attacks.BackdoorClient(client_data, create_model_fn, backdoor_idx, seed=seed)
     return create_client
 
 
 def experiment(config):
     if config['dataset'] == "fmnist":
-        data = src.load_data.mnist()
+        data = fl.load_data.mnist()
         if config.get("from_y"):
-            data.map(src.attacks.backdoor_mapping(data, config['from_y'], config['to_y']))
+            data.map(fl.attacks.backdoor_mapping(data, config['from_y'], config['to_y']))
         data = data.normalise()
     if config['dataset'] == "solar_home":
-        data_collector_counts, _ = src.load_data.solar_home_customer_regions()
+        data_collector_counts, _ = fl.load_data.solar_home_customer_regions()
         num_clients = sum(data_collector_counts.values())
         config['num_adversaries'] = round((config['num_adversaries'] / config['num_clients']) * num_clients)
         config['num_clients'] = num_clients
@@ -94,27 +92,27 @@ def experiment(config):
         ))
 
     strategy_type = {
-        "fedavg": FedAVG, "median": src.strategy.Median, "centre": src.strategy.Centre
+        "fedavg": FedAVG, "median": fl.strategy.Median, "centre": fl.strategy.Centre
     }[config['aggregator']]
     if config.get("from_y") or config.get("backdoor"):
-        adversary_type = src.attacks.BackdoorLIE
-        client_type = src.attacks.BackdoorClient
+        adversary_type = fl.attacks.BackdoorLIE
+        client_type = fl.attacks.BackdoorClient
     else:
         adversary_type = {
-            "empty": src.attacks.EmptyUpdater, "ipm": src.attacks.IPM, "lie": src.attacks.LIE
+            "empty": fl.attacks.EmptyUpdater, "ipm": fl.attacks.IPM, "lie": fl.attacks.LIE
         }[config['attack']]
-        client_type = src.client.Client
+        client_type = fl.client.Client
 
     train_results = []
     test_results = []
     create_model_fn = {
-        "fmnist": src.common.create_fmnist_model,
-        "solar_home": src.common.create_solar_home_model
+        "fmnist": fl.common.create_fmnist_model,
+        "solar_home": fl.common.create_solar_home_model
     }[config['dataset']]
 
     for i in trange(config['repeat']):
         seed = round(np.pi**i + np.exp(i)) % 2**32
-        server = flagon.Server(
+        server = fl.Server(
             create_model_fn().get_parameters(),
             config,
             strategy=strategy_type(),
@@ -134,7 +132,7 @@ def experiment(config):
             adversary_type=adversary_type,
             seed=seed
         )
-        history = flagon.start_simulation(server, clients, network_arch)
+        history = fl.start_simulation(server, clients, network_arch)
 
         if config.get("eval_every"):
             train_results.append(history.aggregate_history)
@@ -158,7 +156,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     with open("configs/attack.json", 'r') as f:
-        experiment_config = src.common.get_experiment_config(json.load(f), args.id)
+        experiment_config = fl.common.get_experiment_config(json.load(f), args.id)
     print(f"Using config: {experiment_config}")
     experiment_config["dataset"] = args.dataset
 
