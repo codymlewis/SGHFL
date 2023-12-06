@@ -15,7 +15,7 @@ import scipy as sp
 import scipy.optimize as sp_opt
 from tqdm import tqdm, trange
 
-import src.data_manager
+import data_manager
 
 logger = logging.getLogger("apartment experiment")
 logger.setLevel(logging.DEBUG)
@@ -484,7 +484,7 @@ class Corroborator:
 
 
 def load_data():
-    with open("data/apartment_data.pkl", 'rb') as f:
+    with open("../data/apartment_data.pkl", 'rb') as f:
         data = pickle.load(f)
 
     client_data = []
@@ -494,7 +494,7 @@ def load_data():
         expanded_idx = np.array([np.arange(i - 24, i - 1) for i in idx])
         client_X, client_Y = data[i][expanded_idx], data[i][idx, 0]
         client_X = einops.rearrange(client_X, 'b h s -> b (h s)')
-        client_data.append(src.data_manager.Dataset({
+        client_data.append(data_manager.Dataset({
             "train": {"X": client_X[:300 * 24], "Y": client_Y[:300 * 24]},
             "test": {"X": client_X[300 * 24:], "Y": client_Y[300 * 24:]}
         }))
@@ -508,6 +508,13 @@ def load_data():
 
 def load_customer_regions():
     return [list(range(i, min(i + 10, 114))) for i in range(0, 114, 10)]
+
+
+def get_experiment_config(all_exp_configs, exp_id):
+    experiment_config = {k: v for k, v in all_exp_configs.items() if k != "experiments"}
+    variables = all_exp_configs['experiments'][exp_id - 1]
+    experiment_config.update(variables)
+    return experiment_config
 
 
 if __name__ == "__main__":
@@ -524,7 +531,7 @@ if __name__ == "__main__":
     start_time = time.time()
     keyword = "performance" if args.performance else "attack" if args.attack else "fairness"
     with open(f"configs/solar_home_{keyword}.json", 'r') as f:
-        experiment_config = src.common.get_experiment_config(json.load(f), args.id)
+        experiment_config = get_experiment_config(json.load(f), args.id)
     print(f"Performing {keyword} experiment with {experiment_config=}")
     experiment_config['experiment_type'] = keyword
 
