@@ -46,7 +46,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     keyword = 'performance' if args.performance else 'fairness' if args.fairness else 'attack'
-    json_files = [f for f in os.listdir("results") if (args.dataset in f and keyword in f)]
+    json_files = [f for f in os.listdir(f"{args.dataset}/results") if keyword in f]
     if args.attack and args.backdoor:
         json_files = [f for f in json_files if "backdoor" in f]
     elif args.attack and not args.backdoor:

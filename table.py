@@ -14,7 +14,9 @@ def make_leaves_lists(data):
         if isinstance(v, dict):
             improved_data[k] = make_leaves_lists(v)
         else:
-            improved_data[k] = {vk: {vvk: [] for vvk in vv.keys()} if isinstance(vv, dict) else [] for vk, vv in v[0].items()}
+            improved_data[k] = {
+                vk: {vvk: [] for vvk in vv.keys()} if isinstance(vv, dict) else [] for vk, vv in v[0].items()
+            }
             for vitem in v:
                 for ki, vi in vitem.items():
                     if isinstance(vi, dict):
@@ -46,26 +48,20 @@ def process_train_test_results(data):
                     p = train_or_test == "train" and vk == "cosinesimilarity"
                     q = train_or_test == "test"
                     if p or q:
-                        new_key = f"{k} {vk}"
                         if vk in ["accuracy", "accuracy std", "cosinesimilarity", "asr"]:
-                            # new_key += " (%)"
-                            # vv *= 100
                             new_results[f"{k} {vk}"] = f"{np.mean(vv):.3%} ({np.std(vv):.3%})"
                         else:
                             new_results[f"{k} {vk}"] = f"{np.mean(vv):.3g} ({np.std(vv):.3g})"
-                        # new_results[new_key] = f"{np.mean(vv):.3e} ({np.std(vv):.3e})"
             else:
                 p = train_or_test == "train" and k == "cosinesimilarity"
-                q = train_or_test == "test" 
+                q = train_or_test == "test"
                 if p or q:
                     if k in ["accuracy", "cosinesimilarity", "asr"]:
-                        # k += " (%)"
-                        # v *= 100
                         new_results[k] = f"{np.mean(v):.3%} ({np.std(v):.3%})"
                     else:
                         new_results[k] = f"{np.mean(v):.3g} ({np.std(v):.3g})"
-                    # new_results[k] = f"{np.mean(v):.3e} ({np.std(v):.3e})"
     return new_results
+
 
 def process_fairness_environment(env_data):
     environment = ""
