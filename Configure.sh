@@ -4,3 +4,8 @@ poetry install
 
 [[ $(lspci | grep 'NVIDIA') ]] && \
     poetry run pip install -U "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+
+
+cd data_processing
+poetry run python acquire.py
+cd ../
