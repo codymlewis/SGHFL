@@ -1,7 +1,6 @@
 from typing import List, Dict
 from functools import partial
 import argparse
-import pickle
 import json
 import time
 import logging
@@ -124,15 +123,18 @@ class Server:
         logger.info("Server completed analytics in %f seconds", time.time() - start_time)
 
         if self.config['experiment_type'] == "fairness":
-            maes, mses = [], []
+            maes, mses, mapes = [], [], []
             for p, yt in zip(all_preds, all_Y_test):
                 maes.append(skm.mean_absolute_error(yt, p))
                 mses.append(skm.mean_squared_error(yt, p))
+                mapes.append(skm.mean_absolute_percentage_error(yt, p))
             return {
                 "MAE": np.mean(maes),
                 "MAE STD": np.std(maes),
                 "MSE": np.mean(mses),
                 "MSE STD": np.std(mses),
+                "MAPE": np.mean(mapes),
+                "MAPE STD": np.std(mapes),
             }
 
         preds = np.concatenate(all_preds)
@@ -141,6 +143,7 @@ class Server:
             "MAE": skm.mean_absolute_error(Y_test, preds),
             "RMSE": np.sqrt(skm.mean_squared_error(Y_test, preds)),
             "r2 score": skm.r2_score(Y_test, preds),
+            "MAPE": skm.mean_absolute_percentage_error(Y_test, preds),
         }
 
     def backdoor_analytics(self):
@@ -158,6 +161,7 @@ class Server:
         return {
             "MAE": skm.mean_absolute_error(Y_test, preds),
             "RMSE": np.sqrt(skm.mean_squared_error(Y_test, preds)),
+            "MAPE": skm.mean_absolute_percentage_error(Y_test, preds),
         }
 
     def evaluate(self, X_test, Y_test):
@@ -166,6 +170,7 @@ class Server:
             "MAE": skm.mean_absolute_error(Y_test, preds),
             "RMSE": np.sqrt(skm.mean_squared_error(Y_test, preds)),
             "r2 score": skm.r2_score(Y_test, preds),
+            "MAPE": skm.mean_absolute_percentage_error(Y_test, preds),
         }
 
 
@@ -490,19 +495,21 @@ def load_data():
 
     client_data = []
     X_test, Y_test = [], []
-    for i in range(len(train_data)):
-        idx = np.arange(24, len(train_data[i]))
+    for c in train_data.keys():
+        idx = np.arange(24, len(train_data[c]))
         expanded_idx = np.array([np.arange(i - 24, i - 1) for i in idx])
-        client_train_X, client_train_Y = train_data[i][expanded_idx], train_data[i][idx, 0]
-        client_test_X, client_test_Y = test_data[i][expanded_idx], test_data[i][idx, 0]
+        client_train_X, client_train_Y = train_data[c][expanded_idx], train_data[c][idx, 0]
+        idx = np.arange(24, len(test_data[c]))
+        expanded_idx = np.array([np.arange(i - 24, i - 1) for i in idx])
+        client_test_X, client_test_Y = test_data[c][expanded_idx], test_data[c][idx, 0]
         client_train_X = einops.rearrange(client_train_X, 'b h s -> b (h s)')
         client_test_X = einops.rearrange(client_test_X, 'b h s -> b (h s)')
         client_data.append(data_manager.Dataset({
             "train": {"X": client_train_X, "Y": client_train_Y},
             "test": {"X": client_test_X, "Y": client_test_Y}
         }))
-        X_test.append(client_data[-1]['test']['X'])
-        Y_test.append(client_data[-1]['test']['Y'])
+        X_test.append(client_test_X)
+        Y_test.append(client_test_Y)
     X_test = np.concatenate(X_test)
     Y_test = np.concatenate(Y_test)
 
@@ -533,7 +540,7 @@ if __name__ == "__main__":
 
     start_time = time.time()
     keyword = "performance" if args.performance else "attack" if args.attack else "fairness"
-    with open(f"configs/solar_home_{keyword}.json", 'r') as f:
+    with open(f"configs/{keyword}.json", 'r') as f:
         experiment_config = get_experiment_config(json.load(f), args.id)
     print(f"Performing {keyword} experiment with {experiment_config=}")
     experiment_config['experiment_type'] = keyword
