@@ -14,6 +14,7 @@ import sklearn.cluster as skc
 import scipy as sp
 import scipy.optimize as sp_opt
 from tqdm import tqdm, trange
+from safetensors.numpy import load_file
 
 import data_manager
 
@@ -484,19 +485,21 @@ class Corroborator:
 
 
 def load_data():
-    with open("../data/apartment_data.pkl", 'rb') as f:
-        data = pickle.load(f)
+    train_data = load_file("../data/apartment_2015.safetensors")
+    test_data = load_file("../data/apartment_2016.safetensors")
 
     client_data = []
     X_test, Y_test = [], []
-    for i in range(len(data)):
-        idx = np.arange(24, len(data[i]))
+    for i in range(len(train_data)):
+        idx = np.arange(24, len(train_data[i]))
         expanded_idx = np.array([np.arange(i - 24, i - 1) for i in idx])
-        client_X, client_Y = data[i][expanded_idx], data[i][idx, 0]
-        client_X = einops.rearrange(client_X, 'b h s -> b (h s)')
+        client_train_X, client_train_Y = train_data[i][expanded_idx], train_data[i][idx, 0]
+        client_test_X, client_test_Y = test_data[i][expanded_idx], test_data[i][idx, 0]
+        client_train_X = einops.rearrange(client_train_X, 'b h s -> b (h s)')
+        client_test_X = einops.rearrange(client_test_X, 'b h s -> b (h s)')
         client_data.append(data_manager.Dataset({
-            "train": {"X": client_X[:300 * 24], "Y": client_Y[:300 * 24]},
-            "test": {"X": client_X[300 * 24:], "Y": client_Y[300 * 24:]}
+            "train": {"X": client_train_X, "Y": client_train_Y},
+            "test": {"X": client_test_X, "Y": client_test_Y}
         }))
         X_test.append(client_data[-1]['test']['X'])
         Y_test.append(client_data[-1]['test']['Y'])
