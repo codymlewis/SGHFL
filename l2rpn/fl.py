@@ -8,7 +8,7 @@ import chex
 import flax.linen as nn
 from flax.training import train_state
 import optax
-import clax
+import kmeans
 from sklearn import metrics
 
 from logger import logger
@@ -88,7 +88,7 @@ def topk(all_params, k=0.5):
 @jax.jit
 def centre(all_params):
     nclusters = len(all_params) // 4 + 1
-    return jax.tree_util.tree_map(lambda *x: clax.kmeans.fit(jnp.array(x), nclusters)['centroids'].mean(axis=0), *all_params)
+    return jax.tree_util.tree_map(lambda *x: kmeans.fit(jnp.array(x), nclusters)['centroids'].mean(axis=0), *all_params)
 
 
 class Client:
@@ -111,7 +111,7 @@ class Client:
         self.past_load = collections.deque([], maxlen=self.forecast_window)
         self.past_gen = collections.deque([], maxlen=self.forecast_window)
 
-    def add_data(self, obs, i, transitions):
+    def add_data(self, obs):
         load_p = obs.load_p[self.load_id].sum() if self.load_id is not None else 0.0
         gen_p = obs.gen_p[self.gen_id].sum() if self.gen_id is not None else 0.0
         if len(self.past_load) == self.forecast_window:
@@ -121,7 +121,6 @@ class Client:
                 np.array(self.past_gen),
             ))
             self.data.add(sample, np.array([load_p, gen_p]))
-            transitions.client_forecasts[max(0, i - 1), self.id] = forecast(self.state, sample)
         self.past_load.append(load_p)
         self.past_gen.append(gen_p)
 
@@ -189,9 +188,9 @@ class Server:
                 client.step(self.global_params, self.batch_size)
             client.reset()
 
-    def add_data(self, obs, i, transitions):
+    def add_data(self, obs):
         for client in self.clients:
-            client.add_data(obs, i, transitions)
+            client.add_data(obs)
 
     def add_test_data(self, obs):
         true_forecasts, predicted_forecasts = [], []
@@ -291,9 +290,9 @@ class MiddleServer:
         for client in self.clients:
             client.set_params(global_params)
 
-    def add_data(self, obs, i, transitions):
+    def add_data(self, obs):
         for client in self.clients:
-            client.add_data(obs, i, transitions)
+            client.add_data(obs)
 
     def add_test_data(self, obs):
         true_forecasts, predicted_forecasts = [], []
