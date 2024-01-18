@@ -160,8 +160,10 @@ def process_data(filename):
             json.dump(weather_data, f)
         logging.info(f"weather data saved to ../data/weather_{year_range}.json")
 
+    solar_home_data = solar_home_data[solar_home_data.Customer != 300]
     # For the final steps of processing, we first divide the clients into regions based on postcode
-    if os.path.exists("../data/customer_regions.json"):
+    # if os.path.exists("../data/customer_regions.json"):
+    if False:
         with open("../data/customer_regions.json", 'r') as f:
             customer_region_map = json.load(f)
     else:

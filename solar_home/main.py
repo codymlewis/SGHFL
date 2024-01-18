@@ -14,6 +14,7 @@ import sklearn.cluster as skc
 import scipy as sp
 import scipy.optimize as sp_opt
 from tqdm import tqdm, trange
+from safetensors.numpy import load_file
 
 import data_manager
 
@@ -129,15 +130,18 @@ class Server:
         logger.info("Server completed analytics in %f seconds", time.time() - start_time)
 
         if self.config['experiment_type'] == "fairness":
-            maes, mses = [], []
+            maes, mses, mapes = [], [], []
             for p, yt in zip(all_preds, all_Y_test):
                 maes.append(skm.mean_absolute_error(yt, p))
                 mses.append(skm.mean_squared_error(yt, p))
+                mapes.append(skm.mean_absolute_percentage_error(yt, p))
             return {
                 "MAE": np.mean(maes),
                 "MAE STD": np.std(maes),
                 "MSE": np.mean(mses),
                 "MSE STD": np.std(mses),
+                "MAPE": np.mean(mapes),
+                "MAPE STD": np.std(mapes),
             }
 
         preds = np.concatenate(all_preds)
@@ -146,6 +150,7 @@ class Server:
             "MAE": skm.mean_absolute_error(Y_test, preds),
             "RMSE": np.sqrt(skm.mean_squared_error(Y_test, preds)),
             "r2 score": skm.r2_score(Y_test, preds),
+            "MAPE": skm.mean_absolute_percentage_error(Y_test, preds),
         }
 
     def backdoor_analytics(self):
@@ -163,6 +168,7 @@ class Server:
         return {
             "MAE": skm.mean_absolute_error(Y_test, preds),
             "RMSE": np.sqrt(skm.mean_squared_error(Y_test, preds)),
+            "MAPE": skm.mean_absolute_percentage_error(Y_test, preds),
         }
 
     def evaluate(self, X_test, Y_test):
@@ -171,6 +177,7 @@ class Server:
             "MAE": skm.mean_absolute_error(Y_test, preds),
             "RMSE": np.sqrt(skm.mean_squared_error(Y_test, preds)),
             "r2 score": skm.r2_score(Y_test, preds),
+            "MAPE": skm.mean_absolute_percentage_error(Y_test, preds),
         }
 
 
@@ -490,19 +497,23 @@ class Corroborator:
 
 
 def load_data():
-    with open("../data/solar_home_data.pkl", 'rb') as f:
-        data = pickle.load(f)
+    train_data = load_file("../data/solar_home_2010-2011.safetensors")
+    test_data = load_file("../data/solar_home_2011-2012.safetensors")
 
     client_data = []
     X_test, Y_test = [], []
-    for i in range(1, 301):
-        idx = np.arange(24, len(data[i]))
+    for c in train_data.keys():
+        idx = np.arange(24, len(train_data[c]))
         expanded_idx = np.array([np.arange(i - 24, i - 1) for i in idx])
-        client_X, client_Y = data[i][expanded_idx], data[i][idx, :2]
-        client_X = einops.rearrange(client_X, 'b h s -> b (h s)')
+        client_train_X, client_train_Y = train_data[c][expanded_idx], train_data[c][idx, :2]
+        client_train_X = einops.rearrange(client_train_X, 'b h s -> b (h s)')
+        idx = np.arange(24, len(test_data[c]))
+        expanded_idx = np.array([np.arange(i - 24, i - 1) for i in idx])
+        client_test_X, client_test_Y = test_data[c][expanded_idx], test_data[c][idx, :2]
+        client_test_X = einops.rearrange(client_test_X, 'b h s -> b (h s)')
         client_data.append(data_manager.Dataset({
-            "train": {"X": client_X[:300 * 24], "Y": client_Y[:300 * 24]},
-            "test": {"X": client_X[300 * 24:], "Y": client_Y[300 * 24:]}
+            "train": {"X": client_train_X, "Y": client_train_Y},
+            "test": {"X": client_test_X, "Y": client_test_Y}
         }))
         X_test.append(client_data[-1]['test']['X'])
         Y_test.append(client_data[-1]['test']['Y'])
@@ -513,7 +524,7 @@ def load_data():
 
 
 def load_customer_regions():
-    with open("data/customer_regions.json", 'r') as f:
+    with open("../data/customer_regions.json", 'r') as f:
         customer_regions = json.load(f)
     regions = [[] for _ in np.unique(list(customer_regions.values()))]
     for customer, region_i in customer_regions.items():
