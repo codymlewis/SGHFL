@@ -21,6 +21,8 @@ numba = "^0.58.1"
 pandapower = { git = "git@github.com:e2nIEE/pandapower.git", branch = "develop" }
 safetensors = "^0.4.1"
 einops = "^0.7.0"
+l2rpn-baselines = "^0.8.0"
+stable-baselines3 = "^2.2.1"
 
 [tool.poetry.group.dev.dependencies]
 autopep8 = "^2.0.4"

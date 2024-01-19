@@ -5,8 +5,9 @@ import os
 import math
 import time
 import grid2op
-from grid2op import Agent
+from grid2op.Reward import LinesCapacityReward
 from lightsim2grid import LightSimBackend
+from l2rpn_baselines.PPO_SB3 import evaluate
 import numpy as np
 import jax
 import jax.numpy as jnp
@@ -154,9 +155,9 @@ if __name__ == "__main__":
     start_time = time.time()
     rng = np.random.default_rng(args.seed)
     rngkey = jax.random.PRNGKey(args.seed)
-    env_name = "rte_case14_realistic"  # Change to l2rpn_idf_2023
+    env_name = "l2rpn_case14_sandbox"  # Change to l2rpn_idf_2023
 
-    env = grid2op.make(env_name)
+    env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=LinesCapacityReward)
     if args.fairness:
         env_opponent_kwargs = {
             "opponent_attack_cooldown": 12*24,
@@ -172,9 +173,18 @@ if __name__ == "__main__":
         env_opponent_kwargs = {}
     if not os.path.exists(grid2op.get_current_local_dir() + f"/{env_name}_test"):
         env.train_val_split_random(pct_val=0.0, add_for_test="test", pct_test=10.0)
-    train_env = grid2op.make(env_name + "_train", backend=LightSimBackend(), **env_opponent_kwargs)
+    train_env = grid2op.make(
+        env_name + "_train", backend=LightSimBackend(), reward_class=LinesCapacityReward, **env_opponent_kwargs
+    )
 
-    agent = Agent.RandomAgent(env.action_space)
+    agent, _ = evaluate(
+        env,
+        nb_episode=0,
+        load_path="./agent/saved_model",
+        name="test",
+        nb_process=1,
+        verbose=False,
+    )
     server = setup(
         env,
         args.episodes,
@@ -200,8 +210,10 @@ if __name__ == "__main__":
             cs = server.step()
 
     # The testing phase
-    logger.info("Testing how long the trained model can run the power network.")
-    test_env = grid2op.make(env_name + "_test", backend=LightSimBackend(), **env_opponent_kwargs)
+    logger.info("Testing the trained model.")
+    test_env = grid2op.make(
+        env_name + "_test", backend=LightSimBackend(), reward_class=LinesCapacityReward, **env_opponent_kwargs
+    )
     client_forecasts, true_forecasts = test_model(test_env, agent, server, args.forecast_window)
     client_forecasts = client_forecasts.reshape(-1, 2)[args.forecast_window - 1:-1]
     true_forecasts = true_forecasts.reshape(-1, 2)[args.forecast_window - 1:-1]

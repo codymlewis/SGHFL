@@ -5,6 +5,7 @@ __pycache__/
 .vscode/
 data/
 results/
+agent/
 *.bak
 *.pkl
 .ipynb_checkpoints/
