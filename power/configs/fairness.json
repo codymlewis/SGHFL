@@ -8,7 +8,8 @@
             "aggregator": "fedavg"
         },
         {
-            "aggregator": "fedprox"
+            "aggregator": "fedprox",
+	    "mu": 0.00001
         },
         {
 	    "aggregator": "kickback",
@@ -97,7 +98,8 @@
         },
         {
 	    "aggregator": "fedprox",
-            "drop_round": 21
+            "drop_round": 21,
+	    "mu": 0.00001
         },
         {
 	    "aggregator": "fedavg",

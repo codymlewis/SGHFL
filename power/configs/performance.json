@@ -7,7 +7,8 @@
 	    "aggregator": "fedavg"
 	},
         {
-	    "aggregator": "fedprox"
+	    "aggregator": "fedprox",
+	    "mu": 0.00001
 	},
         {
 	    "aggregator": "kickback",
@@ -37,7 +38,8 @@
         },
         {
 	    "aggregator": "fedprox",
-            "num_episodes": 3
+            "num_episodes": 3,
+	    "mu": 0.00001
         },
         {
 	    "aggregator": "kickback",
@@ -71,7 +73,8 @@
         },
         {
 	    "aggregator": "fedprox",
-            "num_episodes": 5
+            "num_episodes": 5,
+	    "mu": 0.00001
         },
         {
 	    "aggregator": "kickback",
@@ -105,7 +108,8 @@
         },
         {
 	    "aggregator": "fedprox",
-            "num_episodes": 10
+            "num_episodes": 10,
+	    "mu": 0.00001
         },
         {
 	    "aggregator": "kickback",
@@ -141,7 +145,8 @@
         {
 	    "aggregator": "fedprox",
             "num_rounds": 8,
-            "num_episodes": 5
+            "num_episodes": 5,
+	    "mu": 0.00001
         },
         {
 	    "aggregator": "kickback",
@@ -179,7 +184,8 @@
         },
         {
 	    "aggregator": "fedprox",
-            "num_rounds": 12
+            "num_rounds": 12,
+	    "mu": 0.00001
         },
         {
 	    "aggregator": "kickback",
@@ -215,7 +221,8 @@
         {
 	    "aggregator": "fedprox",
             "num_rounds": 12,
-            "num_episodes": 5
+            "num_episodes": 5,
+	    "mu": 0.00001
         },
         {
 	    "aggregator": "kickback",
