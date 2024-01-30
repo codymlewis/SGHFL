@@ -53,20 +53,17 @@ class Server:
     def __init__(self, clients, config, sample_shape):
         self.model = RidgeModel()
         self.model.init_params(sample_shape)
-        if config.get("aggregator") is None:
-            self.aggregator = FedAVG()
-        else:
-            match (config["aggregator"]):
-                case "fedavg":
-                    self.aggregator = FedAVG()
-                case "median":
-                    self.aggregator = Median()
-                case "centre":
-                    self.aggregator = Centre()
-                case "krum":
-                    self.aggregator = Krum()
-                case "trimmed_mean":
-                    self.aggregator = TrimmedMean()
+        match config.get("aggregator"):
+            case "median":
+                self.aggregator = Median()
+            case "centre":
+                self.aggregator = Centre()
+            case "krum":
+                self.aggregator = Krum()
+            case "trimmed_mean":
+                self.aggregator = TrimmedMean()
+            case _:
+                self.aggregator = FedAVG()
         self.clients = clients
         self.config = config
         logger.info("Server initialized with %d clients", len(clients))
@@ -180,14 +177,17 @@ def cosine_similarity(client_parameters: List[NDArray]) -> float:
 
 class MiddleServer:
     def __init__(self, clients, config):
-        if config.get("mu1") and config.get("top_k"):
-            self.aggregator = TopKKickbackMomentum()
-        elif config.get("mu1"):
-            self.aggregator = KickbackMomentum()
-        elif config.get("top_k"):
-            self.aggregator = TopK()
-        else:
-            self.aggregator = FedAVG()
+        match config.get('aggregator'):
+            case "topk_kickback":
+                self.aggregator = TopKKickbackMomentum()
+            case "kickback":
+                self.aggregator = KickbackMomentum()
+            case "topk":
+                self.aggregator = TopK()
+            case "fedprox":
+                self.aggregator = FedProx()
+            case _:
+                self.aggregator = FedAVG()
         self.clients = clients
         logger.info("Middle server initialized with %d clients", len(clients))
 
@@ -291,6 +291,25 @@ class Centre:
         return np.mean(model.cluster_centers_, axis=0).reshape(parameters.shape)
 
 
+class FedProx:
+    def __init__(self):
+        self.prev_parameters = None
+        self.episode = 0
+
+    def aggregate(
+        self,
+        client_parameters: List[NDArray],
+        client_samples: List[int],
+        parameters: NDArray,
+        config: Dict[str, str | int | float]
+    ) -> NDArray:
+        if self.episode % config['num_episodes'] == 0:
+            self.prev_parameters = parameters.copy()
+        self.episode += 1
+        grads = np.average([cp - parameters for cp in client_parameters], weights=client_samples, axis=0)
+        return parameters + grads - config['mu'] * (parameters - self.prev_parameters)
+
+
 class KickbackMomentum:
     def __init__(self):
         self.momentum = None
@@ -315,7 +334,7 @@ class KickbackMomentum:
                 self.prev_parameters = parameters.copy()
         self.episode += 1
         grads = np.average([cp - parameters for cp in client_parameters], weights=client_samples, axis=0)
-        return self.prev_parameters + config["mu2"] * self.momentum + grads
+        return parameters + config["mu2"] * self.momentum + grads
 
 
 class TopK:
@@ -333,7 +352,7 @@ class TopK:
         if self.agg_top_k is None:
             self.agg_top_k = np.zeros_like(flat_grads)
 
-        k = round(len(flat_grads) * (1 - config['top_k']))
+        k = round(len(flat_grads) * (1 - config['k']))
         if config['round'] < config["drop_round"]:
             idx = np.where(flat_grads >= np.partition(flat_grads, k)[k])[0]
             self.agg_top_k[idx] += 1
@@ -360,7 +379,7 @@ class TopKKickbackMomentum:
         if self.agg_top_k is None:
             self.agg_top_k = np.zeros_like(flat_grads)
 
-        k = round(len(flat_grads) * (1 - config['top_k']))
+        k = round(len(flat_grads) * (1 - config['k']))
         if config['round'] < config["drop_round"]:
             idx = np.where(flat_grads >= np.partition(flat_grads, k)[k])[0]
             self.agg_top_k[idx] += 1
@@ -378,7 +397,7 @@ class TopKKickbackMomentum:
                 self.momentum = config["mu1"] * self.momentum + (parameters - self.prev_parameters)
                 self.prev_parameters = parameters.copy()
         self.episode += 1
-        return self.prev_parameters + config["mu2"] * self.momentum + grads
+        return parameters + config["mu2"] * self.momentum + grads
 
 
 class Client:

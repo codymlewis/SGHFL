@@ -31,7 +31,7 @@ if __name__ == "__main__":
 
     start_time = time.time()
     keyword = "performance" if args.performance else "attack" if args.attack else "fairness"
-    with open(f"configs/{args.dataset}/{keyword}.json", 'r') as f:
+    with open(f"configs/{keyword}.json", 'r') as f:
         experiment_config = get_experiment_config(json.load(f), args.id)
     print(f"Performing {keyword} experiment with {experiment_config=}")
     experiment_config['experiment_type'] = keyword

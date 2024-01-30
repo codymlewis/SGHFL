@@ -5,86 +5,113 @@
     "drop_round": 8,
     "experiments": [
         {
+            "aggregator": "fedavg"
         },
         {
+            "aggregator": "fedprox"
+        },
+        {
+	    "aggregator": "kickback",
             "mu1": 0.9,
             "mu2": 0.5
         },
         {
+	    "aggregator": "fedavg",
             "num_finetune_episodes": 5
         },
         {
+	    "aggregator": "kickback",
             "num_finetune_episodes": 5,
             "mu1": 0.9,
             "mu2": 0.5
         },
         {
-            "top_k": 0.1
+            "aggregator": "topk",
+            "k": 0.1
         },
         {
-            "top_k": 0.5
+            "aggregator": "topk",
+            "k": 0.5
         },
         {
-            "top_k": 0.9
+	    "aggregator": "topk",
+            "k": 0.9
         },
         {
+	    "aggregator": "topk",
             "num_finetune_episodes": 5,
-            "top_k": 0.1
+            "k": 0.1
         },
         {
+	    "aggregator": "topk",
             "num_finetune_episodes": 5,
-            "top_k": 0.5
+            "k": 0.5
         },
         {
+	    "aggregator": "topk",
             "num_finetune_episodes": 5,
-            "top_k": 0.9
+            "k": 0.9
         },
         {
-            "top_k": 0.1,
+	    "aggregator": "topk_kickback",
+            "k": 0.1,
             "mu1": 0.9,
             "mu2": 0.5
         },
         {
-            "top_k": 0.5,
+	    "aggregator": "topk_kickback",
+            "k": 0.5,
             "mu1": 0.9,
             "mu2": 0.5
         },
         {
-            "top_k": 0.9,
+	    "aggregator": "topk_kickback",
+            "k": 0.9,
             "mu1": 0.9,
             "mu2": 0.5
         },
         {
+	    "aggregator": "topk_kickback",
             "num_finetune_episodes": 5,
-            "top_k": 0.1,
+            "k": 0.1,
             "mu1": 0.9,
             "mu2": 0.5
         },
         {
+	    "aggregator": "topk_kickback",
             "num_finetune_episodes": 5,
-            "top_k": 0.5,
+            "k": 0.5,
             "mu1": 0.9,
             "mu2": 0.5
         },
         {
+	    "aggregator": "topk_kickback",
             "num_finetune_episodes": 5,
-            "top_k": 0.9,
+            "k": 0.9,
             "mu1": 0.9,
             "mu2": 0.5
         },
         {
+	    "aggregator": "fedavg",
             "drop_round": 21
         },
         {
+	    "aggregator": "fedprox",
+            "drop_round": 21
+        },
+        {
+	    "aggregator": "fedavg",
             "drop_round": 21,
             "num_finetune_episodes": 5
         },
         {
+	    "aggregator": "kickback",
             "drop_round": 21,
             "mu1": 0.9,
             "mu2": 0.5
         },
         {
+	    "aggregator": "kickback",
             "drop_round": 21,
             "num_finetune_episodes": 5,
             "mu1": 0.9,

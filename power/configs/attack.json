@@ -16,6 +16,14 @@
             "aggregator": "centre"
         },
         {
+            "attack": "empty",
+            "aggregator": "krum"
+        },
+        {
+            "attack": "empty",
+            "aggregator": "trimmed_mean"
+        },
+        {
             "attack": "ipm",
             "aggregator": "fedavg"
         },
@@ -26,6 +34,14 @@
         {
             "attack": "ipm",
             "aggregator": "centre"
+        },
+        {
+            "attack": "ipm",
+            "aggregator": "krum"
+        },
+        {
+            "attack": "ipm",
+            "aggregator": "trimmed_mean"
         },
         {
             "attack": "lie",
@@ -40,6 +56,14 @@
             "aggregator": "centre"
         },
         {
+            "attack": "lie",
+            "aggregator": "krum"
+        },
+        {
+            "attack": "lie",
+            "aggregator": "trimmed_mean"
+        },
+        {
             "attack": "backdoor_lie",
             "aggregator": "fedavg"
         },
@@ -50,6 +74,14 @@
         {
             "attack": "backdoor_lie",
             "aggregator": "centre"
+        },
+        {
+            "attack": "backdoor_lie",
+            "aggregator": "krum"
+        },
+        {
+            "attack": "backdoor_lie",
+            "aggregator": "trimmed_mean"
         }
     ]
 }
