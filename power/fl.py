@@ -63,6 +63,10 @@ class Server:
                     self.aggregator = Median()
                 case "centre":
                     self.aggregator = Centre()
+                case "krum":
+                    self.aggregator = Krum()
+                case "trimmed_mean":
+                    self.aggregator = TrimmedMean()
         self.clients = clients
         self.config = config
         logger.info("Server initialized with %d clients", len(clients))
@@ -240,6 +244,38 @@ class Median:
         config: Dict[str, str | int | float]
     ) -> NDArray:
         return np.median(client_parameters, axis=0)
+
+
+class TrimmedMean:
+    def aggregate(
+        self,
+        client_parameters: List[NDArray],
+        client_samples: List[int],
+        parameters: NDArray,
+        config: Dict[str, str | int | float]
+    ) -> NDArray:
+        reject_i = round(0.25 * len(client_parameters))
+        sorted_params = np.sort(client_parameters, axis=0)
+        return np.mean(sorted_params[reject_i:-reject_i], axis=0)
+
+
+class Krum:
+    def aggregate(
+        self,
+        client_parameters: List[NDArray],
+        client_samples: List[int],
+        parameters: NDArray,
+        config: Dict[str, str | int | float]
+    ) -> NDArray:
+        n = len(client_parameters)
+        clip = round(0.5 * n)
+        X = np.array([p.reshape(-1) for p in client_parameters])
+        scores = np.zeros(n)
+        distances = np.sum(X**2, axis=1)[:, None] + np.sum(X**2, axis=1)[None] - 2 * np.dot(X, X.T)
+        for i in range(len(X)):
+            scores[i] = np.sum(np.sort(distances[i])[1:((n - clip) - 1)])
+        idx = np.argpartition(scores, n - clip)[:(n - clip)]
+        return np.mean(X[idx], axis=0).reshape(client_parameters[0].shape)
 
 
 class Centre:
