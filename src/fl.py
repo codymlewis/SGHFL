@@ -1,44 +1,30 @@
 from typing import List, Dict
-from functools import partial
-import argparse
-import pickle
-import json
 import time
-import logging
-import os
+from functools import partial
 import numpy as np
 from numpy.typing import NDArray
-import einops
 import sklearn.metrics as skm
 import sklearn.cluster as skc
-import scipy as sp
 import scipy.optimize as sp_opt
-from tqdm import tqdm, trange
-from safetensors.numpy import load_file
+from tqdm import trange
 
-import data_manager
-
-
-logger = logging.getLogger("solar home experiment")
-logger.setLevel(logging.DEBUG)
-ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
-ch.setFormatter(logging.Formatter('| %(name)s %(levelname)s @ %(asctime)s in %(filename)s:%(lineno)d | %(message)s'))
-ch.setStream(tqdm)
-ch.terminator = ""
-logger.addHandler(ch)
+import load_data
+from logger import logger
 
 
 class RidgeModel:
     def __init__(self, alpha=1.0):
         self.alpha = alpha
-        self.parameters = np.zeros((2, 115))
+        self.parameters = np.zeros([])
+
+    def init_params(self, sample_shape):
+        self.parameters = np.zeros(sample_shape if len(sample_shape) > 1 else (1,) + sample_shape)
 
     def fit(self, X, Y, epochs=1):
         loss = 0.0
-        for i in range(Y.shape[1]):
+        for i in range(self.parameters.shape[0]):
             info = sp_opt.minimize(
-                partial(RidgeModel.func, X, Y[:, i], self.alpha),
+                partial(RidgeModel.func, X, Y[:, i] if len(Y.shape) > 1 else Y, self.alpha),
                 x0=self.parameters[i],
                 method="L-BFGS-B",
                 tol=1e-6,
@@ -48,7 +34,7 @@ class RidgeModel:
             )
             self.parameters[i] = info['x']
             loss += info['fun']
-        return loss / (X.shape[1] * Y.shape[1])
+        return loss / np.prod(self.parameters.shape)
 
     def predict(self, X):
         preds = []
@@ -64,8 +50,9 @@ class RidgeModel:
 
 
 class Server:
-    def __init__(self, clients, config):
+    def __init__(self, clients, config, sample_shape):
         self.model = RidgeModel()
+        self.model.init_params(sample_shape)
         if config.get("aggregator") is None:
             self.aggregator = FedAVG()
         else:
@@ -376,239 +363,5 @@ class Client:
     def backdoor_analytics(self, parameters, config):
         model = RidgeModel()
         model.parameters = parameters
-        backdoor_X, backdoor_Y = gen_backdoor_data(self.data['test']['X'], self.data['test']['Y'])
+        backdoor_X, backdoor_Y = load_data.gen_backdoor_data(self.data['test']['X'], self.data['test']['Y'])
         return model.predict(backdoor_X), backdoor_Y
-
-
-class EmptyUpdater(Client):
-    def step(self, parameters, config):
-        _, loss, samples = super().step(parameters, config)
-        return parameters, loss, samples
-
-
-class Adversary(Client):
-    def __init__(self, data, corroborator):
-        super().__init__(data)
-        self.corroborator = corroborator
-        self.corroborator.register(self)
-
-    def honest_step(self, parameters, config):
-        return super().step(parameters, config)
-
-
-class LIE(Adversary):
-    def step(self, parameters, config):
-        mu, sigma, loss = self.corroborator.calc_grad_stats(parameters, config)
-        return mu + self.corroborator.z_max * sigma, loss, len(self.data['train'])
-
-
-class IPM(Adversary):
-    def step(self, parameters, config):
-        mu, sigma, loss = self.corroborator.calc_grad_stats(parameters, config)
-        grads = parameters - mu
-        return parameters + (1 / self.corroborator.nadversaries) * grads, loss, len(self.data['train'])
-
-
-def gen_backdoor_data(X, Y):
-    backdoor_X = X.copy().reshape(-1, 23, 5)
-    backdoor_X[:, -3:, -1] = 100
-    backdoor_Y = Y.copy()
-    backdoor_Y[:, 1] = 8
-    return backdoor_X.reshape(X.shape), backdoor_Y
-
-
-class BackdoorLIE(Adversary):
-    def __init__(self, data, corroborator):
-        super().__init__(data, corroborator)
-        self.backdoor_X, self.backdoor_Y = gen_backdoor_data(self.data['train']['X'], self.data['train']['Y'])
-
-    def step(self, parameters, config):
-        parameters, loss = self.corroborator.calc_backdoor_parameters(parameters, config)
-        return parameters, loss, len(self.data['train'])
-
-    def backdoor_step(self, parameters, config):
-        model = RidgeModel()
-        model.parameters = parameters
-        loss = model.fit(self.backdoor_X, self.backdoor_Y, epochs=config['num_epochs'])
-        return model.parameters, loss, len(self.data['train'])
-
-
-class Corroborator:
-    def __init__(self, nclients, nadversaries):
-        self.nclients = nclients
-        self.adversaries = []
-        self.nadversaries = nadversaries
-        self.round = -1
-        self.mu = None
-        self.sigma = None
-        self.loss = None
-        self.parameters = None
-        s = self.nclients // 2 + 1 - self.nadversaries
-        self.z_max = sp.stats.norm.ppf((self.nclients - s) / self.nclients)
-
-    def register(self, adversary):
-        self.adversaries.append(adversary)
-
-    def calc_grad_stats(self, parameters, config):
-        if self.round == config['round']:
-            return self.mu, self.sigma, self.loss
-
-        honest_parameters = []
-        honest_samples = []
-        honest_losses = []
-        for a in self.adversaries:
-            parameters, loss, samples = a.honest_step(parameters, config)
-            honest_parameters.append(parameters)
-            honest_samples.append(samples)
-            honest_losses.append(loss)
-
-        # Does some aggregation
-        self.mu = np.average(honest_parameters, weights=honest_samples, axis=0)
-        self.sigma = np.sqrt(np.average((honest_parameters - self.mu)**2, weights=honest_samples, axis=0))
-        self.loss = np.average(honest_losses, weights=honest_samples)
-        self.round = config['round']
-        return self.mu, self.sigma, self.loss
-
-    def calc_backdoor_parameters(self, parameters, config):
-        if self.round == config['round']:
-            return self.parameters, self.loss
-
-        self.calc_grad_stats(parameters, config)
-
-        backdoor_parameters = []
-        backdoor_samples = []
-        backdoor_losses = []
-        for a in self.adversaries:
-            parameters, loss, samples = a.backdoor_step(parameters, config)
-            backdoor_parameters.append(parameters)
-            backdoor_samples.append(samples)
-            backdoor_losses.append(loss)
-        logger.info(
-            "The backdoor attack attained a loss of %f",
-            np.average(backdoor_losses, weights=backdoor_samples)
-        )
-
-        self.parameters = np.clip(
-            np.average(backdoor_parameters, weights=backdoor_samples, axis=0),
-            self.mu - self.z_max * self.sigma,
-            self.mu + self.z_max * self.sigma
-        )
-        return self.parameters, self.loss
-
-
-def load_data():
-    train_data = load_file("../data/solar_home_2010-2011.safetensors")
-    test_data = load_file("../data/solar_home_2011-2012.safetensors")
-
-    client_data = []
-    X_test, Y_test = [], []
-    for c in train_data.keys():
-        idx = np.arange(24, len(train_data[c]))
-        expanded_idx = np.array([np.arange(i - 24, i - 1) for i in idx])
-        client_train_X, client_train_Y = train_data[c][expanded_idx], train_data[c][idx, :2]
-        client_train_X = einops.rearrange(client_train_X, 'b h s -> b (h s)')
-        idx = np.arange(24, len(test_data[c]))
-        expanded_idx = np.array([np.arange(i - 24, i - 1) for i in idx])
-        client_test_X, client_test_Y = test_data[c][expanded_idx], test_data[c][idx, :2]
-        client_test_X = einops.rearrange(client_test_X, 'b h s -> b (h s)')
-        client_data.append(data_manager.Dataset({
-            "train": {"X": client_train_X, "Y": client_train_Y},
-            "test": {"X": client_test_X, "Y": client_test_Y}
-        }))
-        X_test.append(client_data[-1]['test']['X'])
-        Y_test.append(client_data[-1]['test']['Y'])
-    X_test = np.concatenate(X_test)
-    Y_test = np.concatenate(Y_test)
-
-    return client_data, X_test, Y_test
-
-
-def load_customer_regions():
-    with open("../data/customer_regions.json", 'r') as f:
-        customer_regions = json.load(f)
-    regions = [[] for _ in np.unique(list(customer_regions.values()))]
-    for customer, region_i in customer_regions.items():
-        regions[region_i].append(int(customer) - 1)
-    return regions
-
-
-def get_experiment_config(all_exp_configs, exp_id):
-    experiment_config = {k: v for k, v in all_exp_configs.items() if k != "experiments"}
-    variables = all_exp_configs['experiments'][exp_id - 1]
-    experiment_config.update(variables)
-    return experiment_config
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Perform experiments evaluating the solar home dataset.")
-    parser.add_argument("-i", "--id", type=int, default=1,
-                        help="Which of the experiments in the config to perform (counts from 1).")
-    parser.add_argument("-p", "--performance", action="store_true",
-                        help="Perform experiments evaluating the performance.")
-    parser.add_argument("-a", "--attack", action="store_true",
-                        help="Perform experiments evaluating the vulnerability to and mitigation of attacks.")
-    parser.add_argument("-f", "--fairness", action="store_true", help="Perform experiments evaluating the fairness.")
-    args = parser.parse_args()
-
-    start_time = time.time()
-    keyword = "performance" if args.performance else "attack" if args.attack else "fairness"
-    with open(f"configs/{keyword}.json", 'r') as f:
-        experiment_config = get_experiment_config(json.load(f), args.id)
-    print(f"Performing {keyword} experiment with {experiment_config=}")
-    experiment_config['experiment_type'] = keyword
-
-    client_data, X_test, Y_test = load_data()
-    if args.performance or args.fairness:
-        regions = load_customer_regions()
-        network_arch = [
-            MiddleServer([Client(client_data[r]) for r in region], experiment_config) for region in regions
-        ]
-    else:
-        if experiment_config["attack"] == "empty":
-            adversary_type = EmptyUpdater
-        else:
-            corroborator = Corroborator(len(client_data), round(len(client_data) * (1 - 0.5)))
-            if experiment_config["attack"] == "lie":
-                adversary_type = partial(LIE, corroborator=corroborator)
-            elif experiment_config["attack"] == "ipm":
-                adversary_type = partial(IPM, corroborator=corroborator)
-            else:
-                adversary_type = partial(BackdoorLIE, corroborator=corroborator)
-        network_arch = [
-            adversary_type(d) if i + 1 > (len(client_data) * 0.5) else Client(d)
-            for i, d in enumerate(client_data)
-        ]
-
-    server = Server(
-        network_arch,
-        experiment_config
-    )
-    training_metrics = server.fit()
-
-    if args.fairness:
-        training_metrics, baseline_metrics = training_metrics
-
-    testing_metrics = server.analytics()
-    centralised_metrics = server.evaluate(X_test, Y_test)
-    print(f"{training_metrics=}")
-    print(f"{testing_metrics=}")
-    print(f"{centralised_metrics=}")
-    results = {"train": training_metrics, "test": testing_metrics, "centralised": centralised_metrics}
-
-    if args.attack and experiment_config['attack'] == "backdoor_lie":
-        backdoor_metrics = server.backdoor_analytics()
-        results['backdoor'] = backdoor_metrics
-        print(f"{backdoor_metrics=}")
-    elif args.fairness:
-        results['baseline'] = baseline_metrics
-        print(f"{baseline_metrics=}")
-
-    os.makedirs("results", exist_ok=True)
-    filename = "results/solar_home_{}.json".format(
-        '_'.join([f'{k}={v}' for k, v in experiment_config.items() if k not in ['repeat', 'round']]),
-    )
-    with open(filename, "w") as f:
-        json.dump(results, f)
-    print(f"Saved results to {filename}")
-
-    print(f"Experiment took {time.time() - start_time} seconds")
