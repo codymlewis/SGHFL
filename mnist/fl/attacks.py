@@ -1,13 +1,10 @@
-# import copy
 import numpy as np
 import scipy as sp
 
-from flagon.common import to_attribute_array
-from flagon.strategy import FedAVG
-import matplotlib.pyplot as plt
-
 from . import client
 from . import common
+from .strategy import FedAVG
+
 
 class EmptyUpdater(client.Client):
     def __init__(self, data, create_model_fn, corroborator, seed=None):
@@ -23,12 +20,12 @@ class LIE(client.Client):
         super().__init__(data, create_model_fn, seed)
         self.corroborator = corroborator
         self.corroborator.register(self)
-    
+
     def fit(self, parameters, config):
         z_max = self.corroborator.z_max
         history, mu, sigma = self.corroborator.calc_grad_stats(parameters, config)
         return [m + z_max * s for m, s in zip(mu, sigma)], len(self.data['train']), history
-    
+
     def honest_fit(self, parameters, config):
         return super().fit(parameters, config)
 
@@ -38,17 +35,17 @@ class IPM(client.Client):
         super().__init__(data, create_model_fn, seed)
         self.corroborator = corroborator
         self.corroborator.register(self)
-    
+
     def fit(self, parameters, config):
         history, mu, sigma = self.corroborator.calc_grad_stats(parameters, config)
         grads = [p - m for p, m in zip(parameters, mu)]
         return [p + (1.0 / self.corroborator.nadversaries) * g for p, g in zip(parameters, grads)], len(self.data['train']), history
-    
+
     def honest_fit(self, parameters, config):
         return super().fit(parameters, config)
 
 
-def backdoor_mapping(data, from_y, to_y): 
+def backdoor_mapping(data, from_y, to_y):
     trigger = np.zeros((28, 28, 1))
     trigger[:5, :5, :] = 1
     def _apply(example):
@@ -77,7 +74,7 @@ class BackdoorClient(client.Client):
     def __init__(self, data, create_model_fn, backdoor_idx=None, seed=None):
         super().__init__(data, create_model_fn)
         self.backdoor_idx = backdoor_idx
-    
+
     def fit(self, parameters, config):
         self.model.set_parameters(parameters)
         metrics = self.model.step(
@@ -117,7 +114,7 @@ class BackdoorLIE(BackdoorClient):
         super().__init__(data, create_model_fn, backdoor_idx, seed)
         self.corroborator = corroborator
         self.corroborator.register(self)
-    
+
     def fit(self, parameters, config):
         update, history = self.corroborator.calc_backdoor_update(parameters, config)
         return update, len(self.data['train']), history
@@ -138,7 +135,7 @@ class BackdoorLIE(BackdoorClient):
         )
         self.model.state = normal_state  # Ensure that adaptive gradients are not also corrupted
         return self.model.get_parameters()
-    
+
     def honest_fit(self, parameters, config):
         return super().fit(parameters, config)
 
@@ -175,7 +172,7 @@ class Corroborator(FedAVG):
             honest_metrics.append(metrics)
 
         # Does some aggregation
-        attr_honest_parameters = to_attribute_array(honest_parameters)
+        attr_honest_parameters = common.to_attribute_array(honest_parameters)
         mu = [np.average(layer, weights=honest_samples, axis=0) for layer in attr_honest_parameters]
         sigma = [np.sqrt(np.average((layer - m)**2, weights=honest_samples, axis=0)) for layer, m in zip(attr_honest_parameters, mu)]
         history = super().analytics(honest_metrics, honest_samples, config)
@@ -186,7 +183,7 @@ class Corroborator(FedAVG):
             return self.update, self.history
 
         self.history, self.mu, self.sigma = self.calc_grad_stats(parameters, config)
-        backdoor_parameters = to_attribute_array([a.backdoor_fit(parameters, config) for a in self.adversaries])
+        backdoor_parameters = common.to_attribute_array([a.backdoor_fit(parameters, config) for a in self.adversaries])
         z_max = sp.stats.norm.ppf((self.nclients - (self.nclients // 2 + 1 - self.nadversaries)) / self.nclients)
         self.update = [
             np.clip(np.mean(p, axis=0), m - z_max * s, m + z_max * s)

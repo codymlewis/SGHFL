@@ -1,9 +1,45 @@
 from typing import List
 import itertools
 import sklearn.cluster as skc
-from flagon.common import Config, Parameters, Metrics, count_clients, to_attribute_array
-from flagon.strategy import FedAVG
+from .common import Config, Parameters, to_attribute_array, Metrics
 import numpy as np
+
+
+class FedAVG:
+    """
+    The federated averaging aggregator proposed in https://arxiv.org/abs/1602.05629
+    """
+
+    def aggregate(
+        self, client_parameters: List[Parameters], client_samples: List[int], parameters: Parameters, config: Config
+    ) -> Parameters:
+        """
+        Aggregate client parameters into a global model.
+
+        Arguments:
+        - client_parameters: Copies of the client local models or the gradient updates
+        - client_samples: The number of samples each client trained on
+        - parameters: The aggregators own current parameters
+        """
+        return fedavg(client_parameters, client_samples)
+
+    def analytics(self, client_metrics: List[Metrics], client_samples: List[int], config: Config) -> Metrics:
+        """
+        Perform federated analytics on the client local metrics.
+
+        Arguments:
+        - client_metrics: Client local metrics
+        - client_samples: The number of samples each client trained on
+        - aggregate_fn: Function to be used to combine the client metrics
+        """
+        return super().analytics(client_metrics, client_samples, config, aggregate_fn=fedavg)
+
+
+def fedavg(
+    client_parameters: List[List[Parameters | int | float]],
+    client_samples: List[int]
+) -> List[Parameters | int | float]:
+    return [np.average(layer, weights=client_samples, axis=0) for layer in to_attribute_array(client_parameters)]
 
 
 class Centre(FedAVG):
@@ -25,6 +61,63 @@ class Median(FedAVG):
         return [np.median(layer, axis=0) for layer in to_attribute_array(client_parameters)]
 
 
+class TrimmedMean(FedAVG):
+    def aggregate(
+        self,
+        client_parameters: List[Parameters],
+        client_samples: List[int],
+        parameters: Parameters,
+        config: Config
+    ) -> Parameters:
+        reject_i = round(0.25 * len(client_parameters))
+        sorted_params = [np.sort(layer, axis=0) for layer in to_attribute_array(client_parameters)]
+        return [np.mean(sorted_layer[reject_i:-reject_i], axis=0) for sorted_layer in sorted_params]
+
+
+class Krum:
+    def aggregate(
+        self,
+        client_parameters: List[Parameters],
+        client_samples: List[int],
+        parameters: Parameters,
+        config: Config
+    ) -> Parameters:
+        aggregated_parameters = []
+        n = len(client_parameters)
+        clip = round(0.5 * n)
+        for client_layers in to_attribute_array(client_parameters):
+            X = np.array([l.reshape(-1) for l in client_layers])
+            scores = np.zeros(n)
+            distances = np.sum(X**2, axis=1)[:, None] + np.sum(X**2, axis=1)[None] - 2 * np.dot(X, X.T)
+            for i in range(len(X)):
+                scores[i] = np.sum(np.sort(distances[i])[1:((n - clip) - 1)])
+            idx = np.argpartition(scores, n - clip)[:(n - clip)]
+            aggregated_parameters.append(np.mean(X[idx], axis=0).reshape(client_parameters[0].shape))
+        return aggregated_parameters
+
+
+class FedProx:
+    def __init__(self):
+        self.prev_parameters = None
+        self.episode = 0
+
+    def aggregate(
+        self,
+        client_parameters: List[Parameters],
+        client_samples: List[int],
+        parameters: Parameters,
+        config: Config
+    ) -> Parameters:
+        if self.episode % config['num_episodes'] == 0:
+            self.prev_parameters = parameters.copy()
+        self.episode += 1
+        grads = [
+            np.average(clayer, weights=client_samples, axis=0) - slayer
+            for clayer, slayer in zip(to_attribute_array(client_parameters), parameters)
+        ]
+        return [p + g + config['mu'] * (p - pp) for p, pp, g in zip(parameters, self.prev_parameters, grads)]
+
+
 class KickbackMomentum(FedAVG):
     def __init__(self):
         self.momentum = None
@@ -34,7 +127,10 @@ class KickbackMomentum(FedAVG):
     def aggregate(
         self, client_parameters: List[Parameters], client_samples: List[int], parameters: Parameters, config: Config
     ) -> Parameters:
-        grads = [np.average(clayer, weights=client_samples, axis=0) - slayer for clayer, slayer in zip(to_attribute_array(client_parameters), parameters)]
+        grads = [
+            np.average(clayer, weights=client_samples, axis=0) - slayer
+            for clayer, slayer in zip(to_attribute_array(client_parameters), parameters)
+        ]
         if self.episode % config['num_episodes'] == 0:
             if self.momentum is None:
                 self.momentum = [np.zeros_like(p) for p in parameters]
@@ -43,7 +139,7 @@ class KickbackMomentum(FedAVG):
                 self.momentum = [config["mu1"] * m + (p - pp) for m, pp, p in zip(self.momentum, self.prev_parameters, parameters)]
                 self.prev_parameters = parameters
         self.episode += 1
-        return [p + config["mu2"] * m + g for p, m, g in zip(self.prev_parameters, self.momentum, grads)]
+        return [p + config["mu2"] * m + g for p, m, g in zip(parameters, self.momentum, grads)]
 
 
 class FreezingMomentum(FedAVG):
@@ -71,33 +167,7 @@ class FreezingMomentum(FedAVG):
                     self.momentum = [config["mu1"] * m + (p - pp) for m, pp, p in zip(self.momentum, self.prev_parameters, parameters)]
                     self.prev_parameters = parameters
         self.episode += 1
-        return [p + config["mu2"] * m + g for p, m, g in zip(self.prev_parameters, self.momentum, grads)]
-
-
-class BottomK(FedAVG):
-    def __init__(self):
-        self.agg_bottom_k = None
-        self.num_clients = 0
-
-    def aggregate(
-        self, client_parameters: List[Parameters], client_samples: List[int], parameters: Parameters, config: Config
-    ) -> Parameters:
-        grads = [np.average(clayer, weights=client_samples, axis=0) - slayer for clayer, slayer in zip(to_attribute_array(client_parameters), parameters)]
-        num_clients = len(client_samples)
-        flat_grads = np.concatenate([g.reshape(-1) for g in grads])
-        if self.agg_bottom_k is None:
-            self.agg_bottom_k = np.zeros_like(flat_grads)
-
-        k = round(len(flat_grads) * config['bottom_k'])
-        if num_clients >= self.num_clients:
-            idx = np.where(flat_grads < np.partition(flat_grads, k)[k])[0]
-            self.agg_bottom_k[idx] += 1
-            self.num_clients = num_clients
-        else:
-            flat_grads = np.where(self.agg_bottom_k >= np.partition(self.agg_bottom_k, -k)[-k], flat_grads, 0)
-            grads = [g.reshape(p.shape) for p, g in zip(parameters, np.split(flat_grads, list(itertools.accumulate([np.prod(g.shape) for g in grads]))[:-1]))]
-
-        return [p + g for p, g in zip(parameters, grads)]
+        return [p + config["mu2"] * m + g for p, m, g in zip(parameters, self.momentum, grads)]
 
 
 class TopK(FedAVG):
@@ -124,51 +194,6 @@ class TopK(FedAVG):
             grads = [g.reshape(p.shape) for p, g in zip(parameters, np.split(flat_grads, list(itertools.accumulate([np.prod(g.shape) for g in grads]))[:-1]))]
 
         return [p + g for p, g in zip(parameters, grads)]
-
-
-class BottomKFreezingMomentum(FedAVG):
-    def __init__(self):
-        self.agg_bottom_k = None
-        self.num_clients = 0
-        self.momentum = None
-        self.prev_parameters = None
-        self.episode = 0
-        self.num_clients = 0
-
-    def aggregate(
-        self, client_parameters: List[Parameters], client_samples: List[int], parameters: Parameters, config: Config
-    ) -> Parameters:
-        grads = [np.average(clayer, weights=client_samples, axis=0) - slayer for clayer, slayer in zip(to_attribute_array(client_parameters), parameters)]
-        num_clients = len(client_samples)
-        flat_grads = np.concatenate([g.reshape(-1) for g in grads])
-        if self.agg_bottom_k is None:
-            self.agg_bottom_k = np.zeros_like(flat_grads)
-
-        k = round(len(flat_grads) * config['bottom_k'])
-        if num_clients >= self.num_clients:
-            idx = np.where(flat_grads < np.partition(flat_grads, k)[k])[0]
-            self.agg_bottom_k[idx] += 1
-            self.num_clients = num_clients
-        else:
-            flat_grads = np.where(self.agg_bottom_k >= np.partition(self.agg_bottom_k, -k)[-k], flat_grads, 0)
-            grads = [g.reshape(p.shape) for p, g in zip(parameters, np.split(flat_grads, list(itertools.accumulate([np.prod(g.shape) for g in grads]))[:-1]))]
-
-        if num_clients < self.num_clients:
-            # Freeze Momomentum
-            pass
-        else:
-            self.num_clients = num_clients
-            if self.episode % config['num_episodes'] == 0:
-                if self.momentum is None:
-                    self.momentum = [np.zeros_like(p) for p in parameters]
-                    self.prev_parameters = parameters
-                else:
-                    self.momentum = [config["mu1"] * m + (p - pp) for m, pp, p in zip(self.momentum, self.prev_parameters, parameters)]
-                    self.prev_parameters = parameters
-        self.episode += 1
-
-        return [p + config["mu2"] * m + g for p, m, g in zip(self.prev_parameters, self.momentum, grads)]
-
 
 
 class TopKFreezingMomentum(FedAVG):
@@ -212,4 +237,4 @@ class TopKFreezingMomentum(FedAVG):
                     self.prev_parameters = parameters
         self.episode += 1
 
-        return [p + config["mu2"] * m + g for p, m, g in zip(self.prev_parameters, self.momentum, grads)]
+        return [p + config["mu2"] * m + g for p, m, g in zip(parameters, self.momentum, grads)]

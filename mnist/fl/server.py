@@ -9,7 +9,7 @@ import numpy as np
 from .common import Parameters, History, Config, Metrics, logger
 from .client import Client
 from .client_manager import ClientManager
-from .strategy import Strategy, FedAVG
+from . import strategy
 
 
 class Server:
@@ -19,12 +19,20 @@ class Server:
         self,
         initial_parameters: Parameters,
         config: Config,
-        strategy: Optional[Strategy] = None,
+        strategy_name: Optional[str] = None,
         client_manager: Optional[ClientManager] = None
     ):
-        if not strategy:
-            strategy = FedAVG()
-        self.strategy = strategy
+        match strategy_name:
+            case "median":
+                self.strategy = strategy.Median()
+            case "centre":
+                self.strategy = strategy.Centre()
+            case "krum":
+                self.strategy = strategy.Krum()
+            case "trimmed_mean":
+                self.strategy = strategy.TrimmedMean()
+            case _:
+                self.strategy = strategy.FedAVG()
         if not client_manager:
             client_manager = ClientManager()
         self.client_manager = client_manager
@@ -162,19 +170,3 @@ class FractionalClientManager(ClientManager):
 
     def sample(self):
         return self.rng.choice(self.clients, min(len(self.clients), self.k), replace=False)
-
-
-class Adaptive(Server):
-    def __init__(self, initial_parameters, config, strategy=None, client_manager=None):
-        super().__init__(initial_parameters, config, strategy, client_manager)
-        self.num_clients = 0
-
-    def round_fit(self, r, history):
-        self.config["adapt_loss"] = False
-        if len(self.client_manager.clients) > self.num_clients:
-            self.num_clients = len(self.client_manager.clients)
-        elif len(self.client_manager.clients) < self.num_clients:
-            logger.info("Lost clients, adapting loss")
-            self.config["adapt_loss"] = True
-            self.num_clients = len(self.client_manager.clients)
-        return super().round_fit(r, history)
