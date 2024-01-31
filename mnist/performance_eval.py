@@ -41,7 +41,7 @@ class CosineSimilarity(fl.common.Metric):
         return similarity_matrix.sum() / (len(client_parameters) * (len(client_parameters) - 1))
 
 
-def experiment(config, strategy_class, middle_server_class=fl.MiddleServer):
+def experiment(config, strategy_name, middle_server_class=fl.middle_server.MiddleServer):
     aggregate_results = []
     test_results = []
     if config['dataset'] == "fmnist":
@@ -52,16 +52,16 @@ def experiment(config, strategy_class, middle_server_class=fl.MiddleServer):
     for i in (pbar := trange(config['repeat'])):
         seed = round(np.pi**i + np.exp(i)) % 2**32
         if config['dataset'] == "fmnist":
-            server = fl.Server(fl.common.create_fmnist_model().get_parameters(), config)
+            server = fl.server.Server(fl.common.create_fmnist_model().get_parameters(), config)
             network_arch = {
                 "clients": [
-                    {"clients": 3, "strategy": strategy_class(), "middle_server_class": middle_server_class}
+                    {"clients": 3, "strategy": strategy_name, "middle_server_class": middle_server_class}
                     for _ in range(5)
                 ]
             }
             clients = create_clients(data, fl.common.create_fmnist_model, network_arch, seed=seed)
         else:
-            server = fl.Server(fl.common.create_solar_home_model().get_parameters(), config)
+            server = fl.server.Server(fl.common.create_solar_home_model().get_parameters(), config)
             network_arch = {
                 "clients": [{"clients": 0} for _ in data_collector_counts.keys()],
             }
@@ -73,7 +73,7 @@ def experiment(config, strategy_class, middle_server_class=fl.MiddleServer):
                 client_ids,
                 seed=seed
             )
-        history = fl.start_simulation(server, clients, network_arch)
+        history = fl.simulation.start_simulation(server, clients, network_arch)
         aggregate_results.append(history.aggregate_history[config['num_rounds']])
         test_results.append(history.test_history[config['num_rounds']])
         pbar.set_postfix(aggregate_results[-1])
@@ -97,8 +97,8 @@ if __name__ == "__main__":
 
     results = experiment(
         experiment_config,
-        fl.strategy.KickbackMomentum if experiment_config.get("mu1") else fl.strategy.FedAVG,
-        fl.middle_server.IntermediateFineTuner if experiment_config.get("num_finetune_episodes") else fl.MiddleServer
+        experiment_config.get("aggregator"),
+        fl.middle_server.IntermediateFineTuner if experiment_config.get("num_finetune_episodes") else fl.middle_server.MiddleServer
     )
 
     filename = "results/performance_{}{}.json".format(

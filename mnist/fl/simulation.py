@@ -44,7 +44,7 @@ def construct_network(
         else:
             middle_server_class = MiddleServer
         middle_server = middle_server_class(
-            strategy=subnet.get("strategy"),
+            strategy_name=subnet.get("strategy"),
             client_manager=subnet.get("client_manager")
         )
         middle_server.register_clients([
@@ -59,7 +59,7 @@ def construct_network(
         else:
             middle_server_class = MiddleServer
         middle_server = middle_server_class(
-            strategy=subnet.get("strategy"),
+            strategy_name=subnet.get("strategy"),
             client_manager=subnet.get("client_manager")
         )
         middle_server.register_clients(construct_network(client_fn, subnet, level_id=f"{level_id}{i}-"))

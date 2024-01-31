@@ -23,6 +23,8 @@ safetensors = "^0.4.1"
 einops = "^0.7.0"
 l2rpn-baselines = "^0.8.0"
 stable-baselines3 = "^2.2.1"
+jaxopt = "^0.8.3"
+datasets = "^2.16.1"
 
 [tool.poetry.group.dev.dependencies]
 autopep8 = "^2.0.4"

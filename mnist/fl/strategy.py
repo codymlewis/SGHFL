@@ -1,8 +1,15 @@
-from typing import List
+from typing import List, Callable, Dict
 import itertools
 import sklearn.cluster as skc
 from .common import Config, Parameters, to_attribute_array, Metrics
 import numpy as np
+
+
+def fedavg(
+    client_parameters: List[List[Parameters | int | float]],
+    client_samples: List[int]
+) -> List[Parameters | int | float]:
+    return [np.average(layer, weights=client_samples, axis=0) for layer in to_attribute_array(client_parameters)]
 
 
 class FedAVG:
@@ -23,7 +30,13 @@ class FedAVG:
         """
         return fedavg(client_parameters, client_samples)
 
-    def analytics(self, client_metrics: List[Metrics], client_samples: List[int], config: Config) -> Metrics:
+    def analytics(
+        self,
+        client_metrics: List[Metrics],
+        client_samples: List[int],
+        config: Config,
+        aggregate_fn: Callable[[List[List[int | float]], List[int]], List[int | float]] = fedavg
+    ) -> Dict[str, int | float]:
         """
         Perform federated analytics on the client local metrics.
 
@@ -32,14 +45,21 @@ class FedAVG:
         - client_samples: The number of samples each client trained on
         - aggregate_fn: Function to be used to combine the client metrics
         """
-        return super().analytics(client_metrics, client_samples, config, aggregate_fn=fedavg)
+        metrics_skeleton = client_metrics[0]
+        distributed_metrics = []
+        for cm in client_metrics:
+            distributed_metrics.append([v for v in cm.values()])
+        aggregated_metrics = aggregate_fn(distributed_metrics, client_samples)
 
+        other_analytics = {}
+        if config.get("analytics"):
+            for analytic_fn in config['analytics']:
+                other_analytics.update(analytic_fn(client_metrics, client_samples, config))
 
-def fedavg(
-    client_parameters: List[List[Parameters | int | float]],
-    client_samples: List[int]
-) -> List[Parameters | int | float]:
-    return [np.average(layer, weights=client_samples, axis=0) for layer in to_attribute_array(client_parameters)]
+        complete_analytics = {k: fm for k, fm in zip(metrics_skeleton, aggregated_metrics)}
+        complete_analytics.update(other_analytics)
+
+        return complete_analytics
 
 
 class Centre(FedAVG):
@@ -74,7 +94,7 @@ class TrimmedMean(FedAVG):
         return [np.mean(sorted_layer[reject_i:-reject_i], axis=0) for sorted_layer in sorted_params]
 
 
-class Krum:
+class Krum(FedAVG):
     def aggregate(
         self,
         client_parameters: List[Parameters],
@@ -92,11 +112,11 @@ class Krum:
             for i in range(len(X)):
                 scores[i] = np.sum(np.sort(distances[i])[1:((n - clip) - 1)])
             idx = np.argpartition(scores, n - clip)[:(n - clip)]
-            aggregated_parameters.append(np.mean(X[idx], axis=0).reshape(client_parameters[0].shape))
+            aggregated_parameters.append(np.mean(X[idx], axis=0).reshape(client_layers[0].shape))
         return aggregated_parameters
 
 
-class FedProx:
+class FedProx(FedAVG):
     def __init__(self):
         self.prev_parameters = None
         self.episode = 0
@@ -184,7 +204,7 @@ class TopK(FedAVG):
         if self.agg_top_k is None:
             self.agg_top_k = np.zeros_like(flat_grads)
 
-        k = round(len(flat_grads) * (1 - config['top_k']))
+        k = round(len(flat_grads) * (1 - config['k']))
         if num_clients >= self.num_clients:
             idx = np.where(flat_grads >= np.partition(flat_grads, k)[k])[0]
             self.agg_top_k[idx] += 1
@@ -214,7 +234,7 @@ class TopKFreezingMomentum(FedAVG):
         if self.agg_top_k is None:
             self.agg_top_k = np.zeros_like(flat_grads)
 
-        k = round(len(flat_grads) * (1 - config['top_k']))
+        k = round(len(flat_grads) * (1 - config['k']))
         if num_clients >= self.num_clients:
             idx = np.where(flat_grads >= np.partition(flat_grads, k)[k])[0]
             self.agg_top_k[idx] += 1

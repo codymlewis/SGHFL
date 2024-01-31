@@ -27,50 +27,31 @@ def experiment(config):
     data = data.normalise()
     for i in (pbar := trange(config['repeat'])):
         seed = round(np.pi**i + np.exp(i)) % 2**32
-        if config.get("adaptive_loss"):
-            server_class = fl.server.Adaptive
-        else:
-            server_class = fl.Server
 
-        if config.get("bottom_k") and config.get('mu1'):
-            strategy_class = fl.strategy.BottomKFreezingMomentum
-        elif config.get("bottom_k"):
-            strategy_class = fl.strategy.BottomK
-        elif config.get("top_k") and config.get('mu1'):
-            strategy_class = fl.strategy.TopKFreezingMomentum
-        elif config.get("top_k"):
-            strategy_class = fl.strategy.TopK
-        elif config.get('mu1'):
-            strategy_class = fl.strategy.FreezingMomentum
-        else:
-            strategy_class = fl.server.FedAVG
-
-        experiment_server = server_class(
+        experiment_server = fl.server.Server(
             fl.common.create_fmnist_model().get_parameters(),
             config,
             client_manager=fl.server.DroppingClientManager(config['drop_round'], seed=seed),
-            strategy=fl.server.FedAVG()
+            strategy_name=config.get("aggregator")
         )
 
         if config.get("num_finetune_episodes") and config.get("adaptive_loss"):
             middle_server_class = fl.middle_server.AdaptiveLossIntermediateFineTuner
         elif config.get("num_finetune_episodes"):
             middle_server_class = fl.middle_server.IntermediateFineTuner
-        elif config.get("adaptive_loss"):
-            middle_server_class = fl.middle_server.AdaptiveLoss
         else:
-            middle_server_class = fl.MiddleServer
+            middle_server_class = fl.middle_server.MiddleServer
 
         network_arch = {
             "clients": [
                 {
                     "clients": 3,
-                    "strategy": strategy_class(),
+                    "strategy": config.get("aggregator"),
                     "middle_server_class": middle_server_class
                 } for _ in range(5)
             ]
         }
-        history = fl.start_simulation(
+        history = fl.simulation.start_simulation(
             experiment_server,
             create_clients(data, fl.common.create_fmnist_model, network_arch, seed=seed),
             network_arch

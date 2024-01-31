@@ -6,167 +6,115 @@
     "drop_round": 2,
     "experiments": [
         {
+            "aggregator": "fedavg"
         },
         {
+            "aggregator": "fedprox",
+	    "mu": 0.00001
+        },
+        {
+            "aggregator": "kickback",
             "mu1": 0.9,
             "mu2": 0.666
         },
         {
+            "aggregator": "fedavg",
             "num_finetune_episodes": 2
         },
         {
+            "aggregator": "kickback",
             "num_finetune_episodes": 2,
             "mu1": 0.9,
             "mu2": 0.666
         },
-        {
-            "adaptive_loss": "mse"
+	{
+            "aggregator": "topk",
+            "k": 0.1
         },
         {
-            "num_finetune_episodes": 2,
-            "adaptive_loss": "mse"
+            "aggregator": "topk",
+            "k": 0.5
         },
         {
+            "aggregator": "topk",
+            "k": 0.9
+        },
+        {
+            "aggregator": "topk",
             "num_finetune_episodes": 2,
-            "adaptive_loss": "mse",
+            "k": 0.1
+        },
+        {
+            "aggregator": "topk",
+            "num_finetune_episodes": 2,
+            "k": 0.5
+        },
+        {
+            "aggregator": "topk",
+            "num_finetune_episodes": 2,
+            "k": 0.9
+        },
+        {
+            "aggregator": "topk_kickback",
+            "k": 0.1,
             "mu1": 0.9,
             "mu2": 0.666
         },
         {
-            "adaptive_loss": "cosine_distance"
-        },
-        {
-            "num_finetune_episodes": 2,
-            "adaptive_loss": "cosine_distance"
-        },
-        {
-            "num_finetune_episodes": 2,
-            "adaptive_loss": "cosine_distance",
+            "aggregator": "topk_kickback",
+            "k": 0.5,
             "mu1": 0.9,
             "mu2": 0.666
         },
         {
-            "bottom_k": 0.1
-        },
-        {
-            "bottom_k": 0.5
-        },
-        {
-            "bottom_k": 0.9
-        },
-        {
-            "num_finetune_episodes": 2,
-            "bottom_k": 0.1
-        },
-        {
-            "num_finetune_episodes": 2,
-            "bottom_k": 0.5
-        },
-        {
-            "num_finetune_episodes": 2,
-            "bottom_k": 0.9
-        },
-        {
-            "bottom_k": 0.1,
+            "aggregator": "topk_kickback",
+            "k": 0.9,
             "mu1": 0.9,
             "mu2": 0.666
         },
         {
-            "bottom_k": 0.5,
-            "mu1": 0.9,
-            "mu2": 0.666
-        },
-        {
-            "bottom_k": 0.9,
-            "mu1": 0.9,
-            "mu2": 0.666
-        },
-        {
+            "aggregator": "topk_kickback",
             "num_finetune_episodes": 2,
-            "bottom_k": 0.1,
+            "k": 0.1,
             "mu1": 0.9,
             "mu2": 0.666
         },
         {
+            "aggregator": "topk_kickback",
             "num_finetune_episodes": 2,
-            "bottom_k": 0.5,
+            "k": 0.5,
             "mu1": 0.9,
             "mu2": 0.666
         },
         {
+            "aggregator": "topk_kickback",
             "num_finetune_episodes": 2,
-            "bottom_k": 0.9,
+            "k": 0.9,
             "mu1": 0.9,
             "mu2": 0.666
         },
         {
-            "top_k": 0.1
-        },
-        {
-            "top_k": 0.5
-        },
-        {
-            "top_k": 0.9
-        },
-        {
-            "num_finetune_episodes": 2,
-            "top_k": 0.1
-        },
-        {
-            "num_finetune_episodes": 2,
-            "top_k": 0.5
-        },
-        {
-            "num_finetune_episodes": 2,
-            "top_k": 0.9
-        },
-        {
-            "top_k": 0.1,
-            "mu1": 0.9,
-            "mu2": 0.666
-        },
-        {
-            "top_k": 0.5,
-            "mu1": 0.9,
-            "mu2": 0.666
-        },
-        {
-            "top_k": 0.9,
-            "mu1": 0.9,
-            "mu2": 0.666
-        },
-        {
-            "num_finetune_episodes": 2,
-            "top_k": 0.1,
-            "mu1": 0.9,
-            "mu2": 0.666
-        },
-        {
-            "num_finetune_episodes": 2,
-            "top_k": 0.5,
-            "mu1": 0.9,
-            "mu2": 0.666
-        },
-        {
-            "num_finetune_episodes": 2,
-            "top_k": 0.9,
-            "mu1": 0.9,
-            "mu2": 0.666
-        },
-
-        {
+            "aggregator": "fedavg",
             "drop_round": 6
         },
         {
+            "aggregator": "fedprox",
+            "drop_round": 6,
+	    "mu": 0.00001
+        },
+        {
+            "aggregator": "fedavg",
             "drop_round": 6,
             "num_finetune_episodes": 2
         },
         {
+            "aggregator": "kickback",
             "drop_round": 6,
             "mu1": 0.9,
             "mu2": 0.666
         },
         {
+            "aggregator": "kickback",
             "drop_round": 6,
             "num_finetune_episodes": 2,
             "mu1": 0.9,

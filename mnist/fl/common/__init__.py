@@ -16,7 +16,6 @@ import einops
 from tqdm import tqdm
 import sklearn.metrics as skm
 import scipy.optimize as sp_opt
-from flagon.common import count_clients
 
 
 from .typing import (
@@ -35,8 +34,6 @@ from .logging import logger
 
 
 from .metric import Metric
-
-from .plot import plot_network
 
 
 CACHED_SOLVERS = {}
@@ -141,7 +138,9 @@ class Model:
                 CACHED_SOLVERS[loss_fun_name]['step'] = jax.jit(CACHED_SOLVERS[loss_fun_name]['solver'].update)
             self.solver = CACHED_SOLVERS[loss_fun_name]['solver']
             self.solver_step = CACHED_SOLVERS[loss_fun_name]['step']
-        self.state = self.solver.init_state(params)
+        self.state = self.solver.init_state(
+            params, jnp.zeros((1, 28, 28, 1), dtype=jnp.float32), jnp.zeros(1, dtype=jnp.float32)
+        )
         self.rng = np.random.default_rng(seed)
         self.metrics = Metrics(model, metrics)
         self.params_tree_structure = jax.tree_util.tree_structure(self.params)
@@ -154,7 +153,9 @@ class Model:
             CACHED_SOLVERS[loss_fun_name]['solver'] = jaxopt.OptaxSolver(opt=self.opt, fun=self.loss_fun)
         self.solver = CACHED_SOLVERS[loss_fun_name]['solver']
         self.solver_step = CACHED_SOLVERS[loss_fun_name]['step']
-        self.state = self.solver.init_state(self.params)
+        self.state = self.solver.init_state(
+            self.params, jnp.zeros((1, 28, 28, 1), dtype=jnp.float32), jnp.zeros(1, dtype=jnp.float32)
+        )
 
     def set_parameters(self, params_leaves):
         self.params = jax.tree_util.tree_unflatten(self.params_tree_structure, params_leaves)

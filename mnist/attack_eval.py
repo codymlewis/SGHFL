@@ -6,7 +6,6 @@ import numpy as np
 from tqdm.auto import trange
 
 import fl
-from fl.strategy import FedAVG
 from fl.common import count_clients
 
 import os
@@ -91,9 +90,6 @@ def experiment(config):
             config['num_clients'], config['num_adversaries']
         ))
 
-    strategy_type = {
-        "fedavg": FedAVG, "median": fl.strategy.Median, "centre": fl.strategy.Centre
-    }[config['aggregator']]
     if config.get("from_y") or config.get("backdoor"):
         adversary_type = fl.attacks.BackdoorLIE
         client_type = fl.attacks.BackdoorClient
@@ -112,10 +108,10 @@ def experiment(config):
 
     for i in trange(config['repeat']):
         seed = round(np.pi**i + np.exp(i)) % 2**32
-        server = fl.Server(
+        server = fl.server.Server(
             create_model_fn().get_parameters(),
             config,
-            strategy=strategy_type(),
+            strategy_name=config.get('aggregator'),
         )
 
         network_arch = {"clients": config['num_clients']}
@@ -132,7 +128,7 @@ def experiment(config):
             adversary_type=adversary_type,
             seed=seed
         )
-        history = fl.start_simulation(server, clients, network_arch)
+        history = fl.simulation.start_simulation(server, clients, network_arch)
 
         if config.get("eval_every"):
             train_results.append(history.aggregate_history)
