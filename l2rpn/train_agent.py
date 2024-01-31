@@ -9,7 +9,7 @@ from l2rpn_baselines.PPO_SB3 import train
 
 if __name__ == "__main__":
     os.makedirs("./agent", exist_ok=True)
-    env_name = "l2rpn_case14_sandbox"
+    env_name = "l2rpn_idf_2023"
     env = grid2op.make(
         env_name,
         reward_class=LinesCapacityReward,

@@ -37,6 +37,7 @@ def setup(
     middle_server_aggregator="fedavg",
     server_km=False,
     middle_server_km=False,
+    middle_server_fp=False,
     intermediate_finetuning=0,
     compute_cs=False,
     attack="",
@@ -76,6 +77,7 @@ def setup(
                 [lower_clients[i] for i in cids],
                 aggregate_fn=getattr(fl, middle_server_aggregator),
                 kickback_momentum=middle_server_km,
+                use_fedprox=middle_server_fp,
             )
             for cids in ms_cids
         ]
@@ -138,6 +140,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=128, help="Batch size for FL training.")
     parser.add_argument("--server-km", action="store_true", help="Use Kickback momentum at the FL server")
     parser.add_argument("--middle-server-km", action="store_true", help="Use Kickback momentum at the FL middle server")
+    parser.add_argument("--middle-server-fp", action="store_true", help="Use FedProx at the FL middle server")
     parser.add_argument("--intermediate-finetuning", type=int, default=0,
                         help="Finetune the FL models for n episodes prior to testing")
     parser.add_argument("--server-aggregator", type=str, default="fedavg",
@@ -155,7 +158,7 @@ if __name__ == "__main__":
     start_time = time.time()
     rng = np.random.default_rng(args.seed)
     rngkey = jax.random.PRNGKey(args.seed)
-    env_name = "l2rpn_case14_sandbox"  # Change to l2rpn_idf_2023
+    env_name = "l2rpn_idf_2023"
 
     env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=LinesCapacityReward)
     if args.fairness:
@@ -196,6 +199,7 @@ if __name__ == "__main__":
         server_km=args.server_km,
         middle_server_aggregator=args.middle_server_aggregator,
         middle_server_km=args.middle_server_km,
+        middle_server_fp=args.middle_server_fp,
         intermediate_finetuning=args.intermediate_finetuning,
         compute_cs=not args.attack and not args.fairness,
         attack=args.attack,
@@ -217,21 +221,19 @@ if __name__ == "__main__":
     client_forecasts, true_forecasts = test_model(test_env, agent, server, args.forecast_window)
     client_forecasts = client_forecasts.reshape(-1, 2)[args.forecast_window - 1:-1]
     true_forecasts = true_forecasts.reshape(-1, 2)[args.forecast_window - 1:-1]
-    header = "seed,mae,rmse,r2_score,mape"
+    args_dict = vars(args)
+    header = "mae,rmse,r2_score,mape," + ",".join(args_dict.keys())
     results = "{},{},{},{},{}".format(
-        args.seed,
         metrics.mean_absolute_error(true_forecasts, client_forecasts),
         math.sqrt(metrics.mean_squared_error(true_forecasts, client_forecasts)),
         metrics.r2_score(true_forecasts, client_forecasts),
         metrics.mean_absolute_percentage_error(true_forecasts, client_forecasts),
+        ",".join([str(v) for v in args_dict.values()])
     )
     if cs:
         header += ",cosine_similarity"
         results += f",{cs}"
     logger.info(f"{results=}")
-
-    header += ",args"
-    results += f",{vars(args)}"
 
     # Record the results
     os.makedirs("results", exist_ok=True)

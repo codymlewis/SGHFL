@@ -86,6 +86,27 @@ def topk(all_params, k=0.5):
 
 
 @jax.jit
+def krum(all_params):
+    n = len(all_params)
+    clip = round(0.5 * n)
+    X = jnp.array([jax.flatten_util.ravel_pytree(p)[0] for p in all_params])
+    unflattener = jax.flatten_util.ravel_pytree(all_params[0])[1]
+    distances = jnp.sum(X**2, axis=1)[:, None] + jnp.sum(X**2, axis=1)[None] - 2 * jnp.dot(X, X.T)
+    _, scores = jax.lax.scan(lambda unused, d: (None, jnp.sum(jnp.sort(d)[1:((n - clip) - 1)])), None, distances)
+    idx = jnp.argpartition(scores, n - clip)[:(n - clip)]
+    return unflattener(jnp.mean(X[idx], axis=0))
+
+
+@jax.jit
+def trimmed_mean(all_params):
+    reject_i = round(0.25 * len(all_params))
+    X = jnp.array([jax.flatten_util.ravel_pytree(p)[0] for p in all_params])
+    unflattener = jax.flatten_util.ravel_pytree(all_params[0])[1]
+    sorted_X = jnp.sort(X, axis=0)
+    return unflattener(jnp.mean(sorted_X[reject_i:-reject_i], axis=0))
+
+
+@jax.jit
 def centre(all_params):
     nclusters = len(all_params) // 4 + 1
     return jax.tree_util.tree_map(lambda *x: kmeans.fit(jnp.array(x), nclusters)['centroids'].mean(axis=0), *all_params)
@@ -263,9 +284,33 @@ def calc_outer_momentum(momentum, grads, prev_params, mu):
     return jax.tree_util.tree_map(lambda m, g, pp: pp + mu * m + g, momentum, grads, prev_params)
 
 
+class FedProx:
+    def __init__(self, global_params, mu=0.00001, aggregate_fn=fedavg):
+        self.global_params = global_params
+        self.prev_parameters = None
+        self.mu = mu
+        self.aggregate = aggregate_fn
+
+    def __call__(self, all_params):
+        self.prev_parameters = self.global_params.copy()
+        grads = self.aggregate([tree_sub(cp, self.global_params) for cp in all_params])
+        self.global_params = calc_fedprox(tree_add(self.global_params, grads), grads, self.prev_parameters, self.mu)
+        return self.global_params
+
+
+@jax.jit
+def calc_fedprox(params, grads, prev_params, mu):
+    return jax.tree_util.tree_map(lambda p, g, pp: pp + g - mu * (p - pp), params, grads, prev_params)
+
+
 @jax.jit
 def tree_sub(tree_a, tree_b):
     return jax.tree_util.tree_map(lambda a, b: a - b, tree_a, tree_b)
+
+
+@jax.jit
+def tree_add(tree_a, tree_b):
+    return jax.tree_util.tree_map(lambda a, b: a + b, tree_a, tree_b)
 
 
 def cosine_similarity(global_params, client_parameters):
@@ -275,10 +320,12 @@ def cosine_similarity(global_params, client_parameters):
 
 
 class MiddleServer:
-    def __init__(self, global_params, clients, aggregate_fn=fedavg, kickback_momentum=False):
+    def __init__(self, global_params, clients, aggregate_fn=fedavg, kickback_momentum=False, use_fedprox=False):
         self.clients = clients
         if kickback_momentum:
             self.aggregate = KickbackMomentum(global_params, aggregate_fn=aggregate_fn)
+        elif use_fedprox:
+            self.aggregate = FedProx(global_params, aggregate_fn=aggregate_fn)
         else:
             self.aggregate = aggregate_fn
 
