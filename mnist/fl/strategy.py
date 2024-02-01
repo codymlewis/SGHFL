@@ -216,7 +216,7 @@ class TopK(FedAVG):
         return [p + g for p, g in zip(parameters, grads)]
 
 
-class TopKFreezingMomentum(FedAVG):
+class TopKKickbackMomentum(FedAVG):
     def __init__(self):
         self.agg_top_k = None
         self.num_clients = 0
@@ -243,18 +243,14 @@ class TopKFreezingMomentum(FedAVG):
             flat_grads = np.where(self.agg_top_k >= np.partition(self.agg_top_k, -k)[-k], flat_grads, 0)
             grads = [g.reshape(p.shape) for p, g in zip(parameters, np.split(flat_grads, list(itertools.accumulate([np.prod(g.shape) for g in grads]))[:-1]))]
 
-        if num_clients < self.num_clients:
-            # Freeze Momomentum
-            pass
-        else:
-            self.num_clients = num_clients
-            if self.episode % config['num_episodes'] == 0:
-                if self.momentum is None:
-                    self.momentum = [np.zeros_like(p) for p in parameters]
-                    self.prev_parameters = parameters
-                else:
-                    self.momentum = [config["mu1"] * m + (p - pp) for m, pp, p in zip(self.momentum, self.prev_parameters, parameters)]
-                    self.prev_parameters = parameters
+        self.num_clients = num_clients
+        if self.episode % config['num_episodes'] == 0:
+            if self.momentum is None:
+                self.momentum = [np.zeros_like(p) for p in parameters]
+                self.prev_parameters = parameters
+            else:
+                self.momentum = [config["mu1"] * m + (p - pp) for m, pp, p in zip(self.momentum, self.prev_parameters, parameters)]
+                self.prev_parameters = parameters
         self.episode += 1
 
         return [p + config["mu2"] * m + g for p, m, g in zip(parameters, self.momentum, grads)]

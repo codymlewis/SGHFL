@@ -102,7 +102,7 @@ if __name__ == "__main__":
     )
 
     filename = "results/performance_{}{}.json".format(
-        '_'.join([f'{k}={v}' for k, v in experiment_config.items() if k not in ['metrics', 'round', 'mu1', 'mu2']]),
+        '_'.join([f'{k}={v}' for k, v in experiment_config.items() if k not in ['metrics', 'round', 'mu1']]),
         "_momentum" if experiment_config.get("mu1") else ""
     )
     with open(filename, "w") as f:
