@@ -79,3 +79,20 @@ def load_data(dataset):
 
 def load_regions(dataset):
     return globals()[f"{dataset}_regions"]()
+
+
+# apartment
+def gen_backdoor_data(X, Y):
+    backdoor_X = X.copy().reshape(len(X), 23, -1)
+    backdoor_X[:, -3:, -1] = 100
+    backdoor_Y = Y.copy()
+    backdoor_Y[:] = 10
+    return backdoor_X.reshape(X.shape), backdoor_Y
+
+# Solar_home
+# def gen_backdoor_data(X, Y):
+#     backdoor_X = X.copy().reshape(-1, 23, 5)
+#     backdoor_X[:, -3:, -1] = 100
+#     backdoor_Y = Y.copy()
+#     backdoor_Y[:, 1] = 8
+#     return backdoor_X.reshape(X.shape), backdoor_Y

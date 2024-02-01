@@ -2,6 +2,7 @@ from functools import partial
 import argparse
 import json
 import time
+import math
 import os
 
 import adversaries
@@ -46,7 +47,7 @@ if __name__ == "__main__":
         if experiment_config["attack"] == "empty":
             adversary_type = adversaries.EmptyUpdater
         else:
-            corroborator = adversaries.Corroborator(len(client_data), round(len(client_data) * (1 - 0.5)))
+            corroborator = adversaries.Corroborator(len(client_data))
             if experiment_config["attack"] == "lie":
                 adversary_type = partial(adversaries.LIE, corroborator=corroborator)
             elif experiment_config["attack"] == "ipm":
@@ -54,7 +55,7 @@ if __name__ == "__main__":
             else:
                 adversary_type = partial(adversaries.BackdoorLIE, corroborator=corroborator)
         network_arch = [
-            adversary_type(d) if i + 1 > (len(client_data) * 0.5) else fl.Client(d)
+            adversary_type(d) if i + 1 > math.ceil(len(client_data) * 0.5) else fl.Client(d)
             for i, d in enumerate(client_data)
         ]
 

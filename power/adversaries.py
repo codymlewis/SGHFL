@@ -52,20 +52,22 @@ class BackdoorLIE(Adversary):
 
 
 class Corroborator:
-    def __init__(self, nclients, nadversaries):
+    def __init__(self, nclients):
         self.nclients = nclients
         self.adversaries = []
-        self.nadversaries = nadversaries
+        self.nadversaries = 0
         self.round = -1
         self.mu = None
         self.sigma = None
         self.loss = None
         self.parameters = None
-        s = self.nclients // 2 + 1 - self.nadversaries
-        self.z_max = sp.stats.norm.ppf((self.nclients - s) / self.nclients)
+        self.z_max = 0
 
     def register(self, adversary):
         self.adversaries.append(adversary)
+        self.nadversaries += 1
+        s = self.nclients // 2 + 1 - self.nadversaries
+        self.z_max = sp.stats.norm.ppf((self.nclients - s) / self.nclients)
 
     def calc_grad_stats(self, parameters, config):
         if self.round == config['round']:
