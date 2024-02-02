@@ -29,7 +29,7 @@ def make_leaves_lists(data):
 
 def format_final_table(styler):
     styler = styler.hide()
-    styler = styler.format(formatter=lambda s: s.replace('%', '\\%'))
+    styler = styler.format(formatter=lambda s: str(s).replace('%', '\\%'))
     return styler
 
 
@@ -64,21 +64,17 @@ def process_train_test_results(data):
 
 
 def process_fairness_environment(env_data):
-    environment = ""
+    environment = env_data[re.search('aggregator=', env_data).end():re.search('aggregator=.*_(.*_)?', env_data).end()]
     num_rounds = int(env_data[re.search('num_rounds=', env_data).end():re.search(r'num_rounds=\d+', env_data).end()])
     drop_round = int(env_data[re.search('drop_round=', env_data).end():re.search(r'drop_round=\d+', env_data).end()])
     environment += "Drop" if drop_round < num_rounds else "No Drop"
     if env_data.find('num_finetune_episodes') >= 0:
         environment += ", IF"
-    if env_data.find('adaptive_loss') >= 0:
-        environment += ", ACD" if env_data.find('cosine_distance') >= 0 else ", AMSE"
     if env_data.find('momentum') >= 0:
-        environment += ", FM"
-    if env_data.find('bottom_k') >= 0:
-        environment += ", BK=" + env_data[re.search('bottom_k=', env_data).end():re.search(r'bottom_k=\d.\d+', env_data).end()]
-    if env_data.find('top_k') >= 0:
-        environment += ", TK=" + env_data[re.search('top_k=', env_data).end():re.search(r'top_k=\d.\d+', env_data).end()]
-    return environment[2:]
+        environment += ", KM"
+    if env_data.find('topk') >= 0:
+        environment += ", TK=" + env_data[re.search('k=', env_data).end():re.search(r'k=\d.\d+', env_data).end()]
+    return environment
 
 
 def process_attack_environment(env_data):
@@ -102,11 +98,10 @@ if __name__ == "__main__":
 
     tabular_data = {}
     for json_file in json_files:
-        if "drop_round=6" not in json_file:
-            with open(f"results/{json_file}", 'r') as f:
-                data = make_leaves_lists(json.load(f))
-            env_name = env_process(json_file)
-            tabular_data[env_name] = process_train_test_results(data)
+        with open(f"results/{json_file}", 'r') as f:
+            data = make_leaves_lists(json.load(f))
+        env_name = env_process(json_file)
+        tabular_data[env_name] = process_train_test_results(data)
 
     df = pd.DataFrame(tabular_data).T
     df = df.reset_index()

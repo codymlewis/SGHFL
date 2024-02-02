@@ -106,8 +106,11 @@ if __name__ == "__main__":
         for json_file in json_files:
             with open(f"results/{json_file}", "r") as f:
                 data = make_leaves_lists(json.load(f))
-            env_name = json_file[re.search('aggregator=', json_file).end():re.search(r'aggregator=[A-Za-z]+_', json_file).end() - 1]
+            env_name = json_file[
+                re.search('aggregator=', json_file).end():re.search(r'aggregator=[A-Za-z]+_', json_file).end() - 1
+            ]
             results[env_name.title()] = data
+        print(results)
 
         plot_attack_results(results, "accuracy", train=False, save=args.save)
         plot_attack_results(results, "crossentropy_loss", train=False, save=args.save)
