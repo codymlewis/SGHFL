@@ -55,13 +55,21 @@ def plot_attack_results(results, key, train=False, save=True):
         ylabel = key.title()
 
     plt.ylabel(ylabel)
-    plt.legend()
+    plt.legend(loc="upper left")
     plt.tight_layout()
     if save:
         plt.savefig(f"{'train' if train else 'test'}_{key}.png", dpi=320)
         plt.clf()
     else:
         plt.show()
+
+
+def process_env_name(env_name):
+    if env_name.lower() == "fedavg":
+        return "FedAVG"
+    if env_name.lower() == "trimmed":
+        return "TrMean"
+    return env_name.title()
 
 
 if __name__ == "__main__":
@@ -109,7 +117,7 @@ if __name__ == "__main__":
             env_name = json_file[
                 re.search('aggregator=', json_file).end():re.search(r'aggregator=[A-Za-z]+_', json_file).end() - 1
             ]
-            results[env_name.title()] = data
+            results[process_env_name(env_name)] = data
         print(results)
 
         plot_attack_results(results, "accuracy", train=False, save=args.save)
