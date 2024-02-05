@@ -28,6 +28,8 @@ if __name__ == "__main__":
     parser.add_argument("-a", "--attack", action="store_true",
                         help="Perform experiments evaluating the vulnerability to and mitigation of attacks.")
     parser.add_argument("-f", "--fairness", action="store_true", help="Perform experiments evaluating the fairness.")
+    parser.add_argument("--pct-adversaries", type=float, default=0.5,
+                        help="Percentage of clients to assign as adversaries, if performing an attack evaluation")
     args = parser.parse_args()
 
     start_time = time.time()
@@ -55,7 +57,7 @@ if __name__ == "__main__":
             else:
                 adversary_type = partial(adversaries.BackdoorLIE, corroborator=corroborator)
         network_arch = [
-            adversary_type(d) if i + 1 > math.ceil(len(client_data) * 0.5) else fl.Client(d)
+            adversary_type(d) if i + 1 > math.ceil(len(client_data) * (1 - args.pct_adversaries)) else fl.Client(d)
             for i, d in enumerate(client_data)
         ]
 

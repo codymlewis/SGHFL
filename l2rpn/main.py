@@ -41,7 +41,8 @@ def setup(
     intermediate_finetuning=0,
     compute_cs=False,
     attack="",
-    seed=0
+    pct_adversaries=0.5,
+    seed=0,
 ):
     forecast_model = fl.ForecastNet()
     global_params = forecast_model.init(jax.random.PRNGKey(seed), jnp.zeros((1, 2 * forecast_window + 2)))
@@ -58,7 +59,7 @@ def setup(
         elif attack == "ipm":
             adversary_type = partial(adversaries.IPM, corroborator=corroborator)
     clients = [
-        (adversary_type if i + 1 > (len(substation_ids) * 0.5) else fl.Client)(
+        (adversary_type if i + 1 > math.ceil(len(substation_ids) * (1 - pct_adversaries)) else fl.Client)(
             i,
             forecast_model,
             np_indexof(env.load_to_subid, si),
@@ -139,6 +140,8 @@ if __name__ == "__main__":
     parser.add_argument("--rounds", type=int, default=10, help="Number of rounds of FL training per episode.")
     parser.add_argument("--batch-size", type=int, default=128, help="Batch size for FL training.")
     parser.add_argument("--server-km", action="store_true", help="Use Kickback momentum at the FL server")
+    parser.add_argument("--pct-adversaries", type=float, default=0.5,
+                        help="Percentage of clients to assign as adversaries, if performing an attack evaluation")
     parser.add_argument("--middle-server-km", action="store_true", help="Use Kickback momentum at the FL middle server")
     parser.add_argument("--middle-server-fp", action="store_true", help="Use FedProx at the FL middle server")
     parser.add_argument("--intermediate-finetuning", type=int, default=0,
@@ -203,6 +206,7 @@ if __name__ == "__main__":
         intermediate_finetuning=args.intermediate_finetuning,
         compute_cs=not args.attack and not args.fairness,
         attack=args.attack,
+        pct_adversaries=args.pct_adversaries,
         seed=args.seed,
     )
     num_clients = server.num_clients
