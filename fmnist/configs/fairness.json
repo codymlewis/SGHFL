@@ -29,20 +29,11 @@
         },
 	{
             "aggregator": "topk",
-            "k": 0.1
-        },
-        {
-            "aggregator": "topk",
             "k": 0.5
         },
         {
             "aggregator": "topk",
             "k": 0.9
-        },
-        {
-            "aggregator": "topk",
-            "num_finetune_episodes": 2,
-            "k": 0.1
         },
         {
             "aggregator": "topk",
@@ -54,13 +45,7 @@
             "num_finetune_episodes": 2,
             "k": 0.9
         },
-        {
-            "aggregator": "topk_kickback",
-            "k": 0.1,
-            "mu1": 0.9,
-            "mu2": 0.666
-        },
-        {
+	{
             "aggregator": "topk_kickback",
             "k": 0.5,
             "mu1": 0.9,

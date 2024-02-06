@@ -14,7 +14,7 @@
         {
 	    "aggregator": "kickback",
             "mu1": 0.9,
-            "mu2": 0.5
+            "mu2": 0.666
         },
         {
 	    "aggregator": "fedavg",
@@ -24,11 +24,7 @@
 	    "aggregator": "kickback",
             "num_finetune_episodes": 5,
             "mu1": 0.9,
-            "mu2": 0.5
-        },
-        {
-            "aggregator": "topk",
-            "k": 0.1
+            "mu2": 0.666
         },
         {
             "aggregator": "topk",
@@ -53,44 +49,31 @@
             "num_finetune_episodes": 5,
             "k": 0.9
         },
-        {
-	    "aggregator": "topk_kickback",
-            "k": 0.1,
-            "mu1": 0.9,
-            "mu2": 0.5
-        },
-        {
+	{
 	    "aggregator": "topk_kickback",
             "k": 0.5,
             "mu1": 0.9,
-            "mu2": 0.5
+            "mu2": 0.666
         },
         {
 	    "aggregator": "topk_kickback",
             "k": 0.9,
             "mu1": 0.9,
-            "mu2": 0.5
+            "mu2": 0.666
         },
-        {
-	    "aggregator": "topk_kickback",
-            "num_finetune_episodes": 5,
-            "k": 0.1,
-            "mu1": 0.9,
-            "mu2": 0.5
-        },
-        {
+	{
 	    "aggregator": "topk_kickback",
             "num_finetune_episodes": 5,
             "k": 0.5,
             "mu1": 0.9,
-            "mu2": 0.5
+            "mu2": 0.666
         },
         {
 	    "aggregator": "topk_kickback",
             "num_finetune_episodes": 5,
             "k": 0.9,
             "mu1": 0.9,
-            "mu2": 0.5
+            "mu2": 0.666
         },
         {
 	    "aggregator": "fedavg",
@@ -110,14 +93,14 @@
 	    "aggregator": "kickback",
             "drop_round": 21,
             "mu1": 0.9,
-            "mu2": 0.5
+            "mu2": 0.666
         },
         {
 	    "aggregator": "kickback",
             "drop_round": 21,
             "num_finetune_episodes": 5,
             "mu1": 0.9,
-            "mu2": 0.5
+            "mu2": 0.666
         }
     ]
 }
