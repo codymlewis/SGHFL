@@ -76,19 +76,10 @@ def bd_create_sh_clients(create_model_fn, network_arch, client_type, nadversarie
 
 
 def experiment(config):
-    if config['dataset'] == "fmnist":
-        data = fl.load_data.mnist()
-        if config.get("from_y"):
-            data.map(fl.attacks.backdoor_mapping(data, config['from_y'], config['to_y']))
-        data = data.normalise()
-    if config['dataset'] == "solar_home":
-        data_collector_counts, _ = fl.load_data.solar_home_customer_regions()
-        num_clients = sum(data_collector_counts.values())
-        config['num_adversaries'] = round((config['num_adversaries'] / config['num_clients']) * num_clients)
-        config['num_clients'] = num_clients
-        print("Overwritten number of clients to {} and number of adversaries to {}".format(
-            config['num_clients'], config['num_adversaries']
-        ))
+    data = fl.load_data.mnist()
+    if config.get("from_y"):
+        data.map(fl.attacks.backdoor_mapping(data, config['from_y'], config['to_y']))
+    data = data.normalise()
 
     if config.get("from_y") or config.get("backdoor"):
         adversary_type = fl.attacks.BackdoorLIE
@@ -101,10 +92,7 @@ def experiment(config):
 
     train_results = []
     test_results = []
-    create_model_fn = {
-        "fmnist": fl.common.create_fmnist_model,
-        "solar_home": fl.common.create_solar_home_model
-    }[config['dataset']]
+    create_model_fn = fl.common.create_fmnist_model
 
     for i in trange(config['repeat']):
         seed = round(np.pi**i + np.exp(i)) % 2**32
@@ -115,10 +103,7 @@ def experiment(config):
         )
 
         network_arch = {"clients": config['num_clients']}
-        if config['dataset'] == "fmnist":
-            create_clients_fn = partial(create_clients, data)
-        else:
-            create_clients_fn = bd_create_sh_clients if config.get("backdoor") else create_sh_clients
+        create_clients_fn = partial(create_clients, data)
 
         clients = create_clients_fn(
             create_model_fn,
@@ -147,17 +132,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Perform experiments evaluating attacks upon FL.")
     parser.add_argument("-i", "--id", type=int, default=1,
                         help="Which of the experiments in the config to perform (counts from 1).")
-    parser.add_argument("-d", "--dataset", type=str, default="fmnist",
-                        help="Which of the datasets to perform the experiment with.")
     args = parser.parse_args()
 
     with open("configs/attack.json", 'r') as f:
         experiment_config = fl.common.get_experiment_config(json.load(f), args.id)
     print(f"Using config: {experiment_config}")
-    experiment_config["dataset"] = args.dataset
-
     results = experiment(experiment_config)
-
     filename = "results/attack_{}.json".format(
         '_'.join([f'{k}={v}' for k, v in experiment_config.items() if k not in ['round']])
     )

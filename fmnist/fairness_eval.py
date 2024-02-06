@@ -84,15 +84,12 @@ if __name__ == "__main__":
     )
     parser.add_argument("-i", "--id", type=int, default=1,
                         help="Which of the experiments in the config to perform (counts from 1).")
-    parser.add_argument("-d", "--dataset", type=str, default="fmnist",
-                        help="Which of the datasets to perform the experiment with.")
     args = parser.parse_args()
 
     with open("configs/fairness.json", 'r') as f:
         experiment_config = fl.common.get_experiment_config(json.load(f), args.id)
     print(f"Using config: {experiment_config}")
     experiment_config["analytics"] = [fairness_analytics]
-    experiment_config["dataset"] = args.dataset
     experiment_config["eval_at"] = experiment_config["drop_round"]
 
     results = experiment(experiment_config)

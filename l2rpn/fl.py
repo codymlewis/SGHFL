@@ -75,7 +75,7 @@ def median(all_params):
 
 
 @jax.jit
-def topk(all_params, k=0.5):
+def topk(all_params, k=0.9):
     avg_params = jax.tree_util.tree_map(lambda *x: sum(x) / len(x), *all_params)
 
     def prune(x):
