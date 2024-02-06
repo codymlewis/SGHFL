@@ -73,8 +73,7 @@ def fairness_analytics(client_metrics, client_samples, config):
     for cm in client_metrics[1:]:
         for k, v in cm.items():
             distributed_metrics[k].append(v)
-    analytics = {f"{k} mean": np.mean(v).item() for k, v in distributed_metrics.items() if "std" in k}
-    analytics.update({f"{k} std": np.std(v).item() for k, v in distributed_metrics.items()})
+    analytics = {f"dropped {k}": np.mean(v[-2:]).item() for k, v in distributed_metrics.items() if "dropped" not in k}
     return analytics
 
 
