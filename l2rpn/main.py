@@ -226,12 +226,11 @@ if __name__ == "__main__":
     client_forecasts = client_forecasts.reshape(-1, 2)[args.forecast_window - 1:-1]
     true_forecasts = true_forecasts.reshape(-1, 2)[args.forecast_window - 1:-1]
     args_dict = vars(args)
-    header = "mae,rmse,r2_score,mape," + ",".join(args_dict.keys())
-    results = "{},{},{},{},{}".format(
+    header = "mae,rmse,r2_score," + ",".join(args_dict.keys())
+    results = "{},{},{},{}".format(
         metrics.mean_absolute_error(true_forecasts, client_forecasts),
         math.sqrt(metrics.mean_squared_error(true_forecasts, client_forecasts)),
         metrics.r2_score(true_forecasts, client_forecasts),
-        metrics.mean_absolute_percentage_error(true_forecasts, client_forecasts),
         ",".join([str(v) for v in args_dict.values()])
     )
     if cs:
