@@ -48,7 +48,7 @@ def process_train_test_results(data):
                     p = train_or_test == "train" and vk == "cosinesimilarity"
                     q = train_or_test == "test"
                     if p or q:
-                        if vk in ["accuracy", "accuracy std", "cosinesimilarity", "asr"]:
+                        if vk in ["accuracy", "dropped accuracy", "cosinesimilarity", "asr"]:
                             new_results[f"{k} {vk}"] = f"{np.mean(vv):.3%} ({np.std(vv):.3%})"
                         else:
                             new_results[f"{k} {vk}"] = f"{np.mean(vv):.3g} ({np.std(vv):.3g})"
@@ -64,16 +64,7 @@ def process_train_test_results(data):
 
 
 def process_fairness_environment(env_data):
-    environment = env_data[re.search('aggregator=', env_data).end():re.search('aggregator=.*_(.*_)?', env_data).end()]
-    num_rounds = int(env_data[re.search('num_rounds=', env_data).end():re.search(r'num_rounds=\d+', env_data).end()])
-    drop_round = int(env_data[re.search('drop_round=', env_data).end():re.search(r'drop_round=\d+', env_data).end()])
-    environment += "Drop" if drop_round < num_rounds else "No Drop"
-    if env_data.find('num_finetune_episodes') >= 0:
-        environment += ", IF"
-    if env_data.find('momentum') >= 0:
-        environment += ", KM"
-    if env_data.find('topk') >= 0:
-        environment += ", TK=" + env_data[re.search('k=', env_data).end():re.search(r'k=\d.\d+', env_data).end()]
+    environment = env_data[re.search('aggregator=', env_data).end():re.search('aggregator=.*_?(.*_)?', env_data).end()]
     return environment
 
 
