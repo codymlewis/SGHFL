@@ -118,18 +118,15 @@ class Server:
         logger.info("Server completed analytics in %f seconds", time.time() - start_time)
 
         if self.config['experiment_type'] == "fairness":
-            maes, mses, mapes = [], [], []
+            maes, mses = [], []
             for p, yt in zip(all_preds, all_Y_test):
                 maes.append(skm.mean_absolute_error(yt, p))
                 mses.append(skm.mean_squared_error(yt, p))
-                mapes.append(skm.mean_absolute_percentage_error(yt, p))
             return {
                 "MAE": np.mean(maes),
-                "MAE STD": np.std(maes),
                 "MSE": np.mean(mses),
-                "MSE STD": np.std(mses),
-                "MAPE": np.mean(mapes),
-                "MAPE STD": np.std(mapes),
+                "Dropped MAE": np.mean(maes[-4:]),
+                "Dropped MSE": np.mean(mses[-4:]),
             }
 
         preds = np.concatenate(all_preds)
@@ -138,7 +135,6 @@ class Server:
             "MAE": skm.mean_absolute_error(Y_test, preds),
             "RMSE": np.sqrt(skm.mean_squared_error(Y_test, preds)),
             "r2 score": skm.r2_score(Y_test, preds),
-            "MAPE": skm.mean_absolute_percentage_error(Y_test, preds),
         }
 
     def backdoor_analytics(self):
@@ -156,7 +152,6 @@ class Server:
         return {
             "MAE": skm.mean_absolute_error(Y_test, preds),
             "RMSE": np.sqrt(skm.mean_squared_error(Y_test, preds)),
-            "MAPE": skm.mean_absolute_percentage_error(Y_test, preds),
         }
 
     def evaluate(self, X_test, Y_test):
@@ -165,7 +160,6 @@ class Server:
             "MAE": skm.mean_absolute_error(Y_test, preds),
             "RMSE": np.sqrt(skm.mean_squared_error(Y_test, preds)),
             "r2 score": skm.r2_score(Y_test, preds),
-            "MAPE": skm.mean_absolute_percentage_error(Y_test, preds),
         }
 
 
