@@ -32,7 +32,7 @@ def process_data(data):
 
 def format_final_table(styler):
     styler = styler.hide()
-    styler = styler.format(formatter=lambda s: s.replace('%', '\\%'))
+    styler = styler.format(formatter=lambda s: str(s).replace('%', '\\%'))
     return styler
 
 

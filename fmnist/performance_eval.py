@@ -36,9 +36,11 @@ def create_clients(data, create_model_fn, network_arch, seed=None):
 
 class CosineSimilarity(fl.common.Metric):
     def __call__(self, global_parameters, client_parameters, client_samples):
-        client_parameters = [np.concatenate([cl.reshape(-1) for cl in cp]) for cp in client_parameters]
+        client_parameters = [
+            np.concatenate([cl.reshape(-1) - gl.reshape(-1) for cl, gl in zip(cp, global_parameters)]) for cp in client_parameters
+        ]
         similarity_matrix = skm.pairwise.cosine_similarity(client_parameters) - np.eye(len(client_parameters))
-        return similarity_matrix.sum() / (len(client_parameters) * (len(client_parameters) - 1))
+        return np.abs(similarity_matrix.sum()) / (len(client_parameters) * (len(client_parameters) - 1))
 
 
 def experiment(config, strategy_name, middle_server_class=fl.middle_server.MiddleServer):
