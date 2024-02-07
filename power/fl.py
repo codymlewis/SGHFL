@@ -146,8 +146,11 @@ class Server:
             all_preds.append(client_preds)
             all_Y_test.append(client_Y_test)
         # Only the energy generation is attacked
-        preds = np.concatenate(all_preds)[:, 1]
-        Y_test = np.concatenate(all_Y_test)[:, 1]
+        preds = np.concatenate(all_preds)
+        Y_test = np.concatenate(all_Y_test)
+        if preds.shape[-1] > 1:
+            preds = preds[:, -1]
+            Y_test = Y_test[:, -1]
         logger.info("Server completed analytics in %f seconds", time.time() - start_time)
         return {
             "MAE": skm.mean_absolute_error(Y_test, preds),
