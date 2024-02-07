@@ -72,7 +72,7 @@ def process_attack_environment(env_data):
     attack = env_data[re.search('attack=', env_data).end():re.search(r'attack=\w+_', env_data).end() - 1]
     if "from_y" in env_data:
         attack = f"Backdoor {attack}"
-    aggregator = env_data[re.search('aggregator=', env_data).end():re.search(r'aggregator=[A-Za-z]+_', env_data).end() - 1]
+    aggregator = env_data[re.search('aggregator=', env_data).end():re.search(r'aggregator=[A-Za-z]+_?', env_data).end() - 1]
     return f"{attack}, {aggregator}"
 
 
