@@ -173,7 +173,7 @@ if __name__ == "__main__":
             "opponent_action_class": grid2op.Action.PowerlineSetAction,
             "opponent_class": grid2op.Opponent.RandomLineOpponent,
             "opponent_budget_class": grid2op.Opponent.BaseActionBudget,
-            "kwargs_opponent": {"lines_attacked": env.name_line}
+            "kwargs_opponent": {"lines_attacked": env.name_line.tolist()}
         }
     else:
         env_opponent_kwargs = {}
