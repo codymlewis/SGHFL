@@ -103,9 +103,7 @@ class Server:
             client_parameters, client_samples, self.parameters, self.config
         )
         history.add(r, client_metrics)
-        p = self.config.get("eval_every") and (r % self.config.get("eval_every")) == 0
-        q = self.config.get("eval_at") and self.config.get("eval_at") == r
-        if p or q:
+        if self.config.get("eval_every") and (r % self.config.get("eval_every")) == 0:
             aggregated_metrics = self.strategy.analytics(client_metrics, client_samples, self.config)
             history.add_aggregate(r, aggregated_metrics)
             logger.info(f"Aggregated training metrics at round {r}: {aggregated_metrics}")
@@ -130,6 +128,20 @@ class Server:
         aggregated_metrics = self.strategy.analytics(client_metrics, client_samples, self.config)
         logger.info(f"Aggregated final metrics {aggregated_metrics}")
 
+        if self.config.get("experiment") == "fairness":
+            logger.info("Performing analytics with the dropped clients")
+            start_time = time.time()
+            n_dropped_clients = len(self.client_manager.all_clients) - len(self.client_manager.clients)
+            dropped_samples, dropped_metrics = [], []
+            for c in self.client_manager.all_clients[-n_dropped_clients:]:
+                samples, metrics = c.evaluate(self.parameters, self.config)
+                dropped_samples.append(samples)
+                dropped_metrics.append(metrics)
+            dropped_agg_metrics = self.strategy.analytics(dropped_metrics, dropped_samples, self.config)
+            logger.info(f"Completed dropped analytics in {time.time() - start_time}s")
+            logger.info(f"Aggregated final dropped metrics {aggregated_metrics}")
+            return aggregated_metrics, dropped_agg_metrics
+
         return aggregated_metrics
 
 
@@ -144,12 +156,12 @@ class DroppingClientManager(ClientManager):
         super().__init__()
         self.round = 0
         self.drop_round = drop_round
-        self.test_clients = []
+        self.all_clients = []
         self.rng = np.random.default_rng(seed)
 
     def register(self, client):
         super().register(client)
-        self.test_clients.append(client)
+        self.all_clients.append(client)
 
     def sample(self):
         self.round += 1
@@ -159,7 +171,7 @@ class DroppingClientManager(ClientManager):
         return super().sample()
 
     def test_sample(self):
-        return self.test_clients
+        return self.clients
 
 
 class FractionalClientManager(ClientManager):

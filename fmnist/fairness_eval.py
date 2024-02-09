@@ -21,8 +21,7 @@ def create_clients(data, create_model_fn, network_arch, seed=None):
 
 
 def experiment(config):
-    aggregate_results = []
-    test_results = []
+    full_results = {}
     data = fl.load_data.mnist()
     data = data.normalise()
     for i in (pbar := trange(config['repeat'])):
@@ -35,9 +34,7 @@ def experiment(config):
             strategy_name=config.get("aggregator")
         )
 
-        if config.get("num_finetune_episodes") and config.get("adaptive_loss"):
-            middle_server_class = fl.middle_server.AdaptiveLossIntermediateFineTuner
-        elif config.get("num_finetune_episodes"):
+        if config.get("num_finetune_episodes"):
             middle_server_class = fl.middle_server.IntermediateFineTuner
         else:
             middle_server_class = fl.middle_server.MiddleServer
@@ -56,25 +53,13 @@ def experiment(config):
             create_clients(data, fl.common.create_fmnist_model, network_arch, seed=seed),
             network_arch
         )
-        agg_res = {config['num_rounds']: history.aggregate_history[config['num_rounds']]}
-        test_res = {config['num_rounds']: history.test_history[config['num_rounds']]}
-        if config['drop_round'] <= config['num_rounds']:
-            agg_res[config['drop_round']] = history.aggregate_history[config['drop_round']]
-            test_res[config['drop_round']] = history.test_history[config['drop_round']]
+        pbar.set_postfix(history.aggregate_history[config['num_rounds']])
 
-        aggregate_results.append(agg_res)
-        test_results.append(test_res)
-        pbar.set_postfix(aggregate_results[-1][config['num_rounds']])
-    return {"train": aggregate_results, "test": test_results}
-
-
-def fairness_analytics(client_metrics, client_samples, config):
-    distributed_metrics = {k: [v] for k, v in client_metrics[0].items()}
-    for cm in client_metrics[1:]:
-        for k, v in cm.items():
-            distributed_metrics[k].append(v)
-    analytics = {f"dropped {k}": np.mean(v[-2:]).item() for k, v in distributed_metrics.items() if "dropped" not in k}
-    return analytics
+        results, dropped_results = history.test_history[config['num_rounds']]
+        for k, v in dropped_results.items():
+            results[f"dropped {k}"] = v
+        full_results[i] = results
+    return full_results
 
 
 if __name__ == "__main__":
@@ -88,14 +73,12 @@ if __name__ == "__main__":
     with open("configs/fairness.json", 'r') as f:
         experiment_config = fl.common.get_experiment_config(json.load(f), args.id)
     print(f"Using config: {experiment_config}")
-    experiment_config["analytics"] = [fairness_analytics]
-    experiment_config["eval_at"] = experiment_config["drop_round"]
+    experiment_config["experiment"] = "fairness"
 
     results = experiment(experiment_config)
 
-    filename = "results/fairness_{}{}.json".format(
-        '_'.join([f'{k}={v}' for k, v in experiment_config.items() if k not in ['analytics', 'round', 'mu1', 'adapt_loss', "eval_at"]]),
-        "_momentum" if experiment_config.get("mu1") else ""
+    filename = "results/fairness_{}.json".format(
+        '_'.join([f'{k}={v}' for k, v in experiment_config.items() if k not in ['analytics', 'round', 'mu1', 'adapt_loss']]),
     )
     with open(filename, "w") as f:
         json.dump(results, f)
