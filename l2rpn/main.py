@@ -110,34 +110,47 @@ def add_data(train_env, agent, server, num_timesteps):
             obs = train_env.reset()
 
 
-def test_model(test_env, agent, server, forecast_window):
+def test_model(test_env, agent, server, forecast_window, fairness):
     server.setup_test()
     obs = test_env.reset()
     reward = train_env.reward_range[0]
     done = False
     client_forecasts, true_forecasts = [], []
-    # for i in itertools.count():
+    if fairness:
+        dropped_cfs, dropped_tfs = [], []
     for i in range(100):
-        true_forecast, client_forecast = server.add_test_data(obs)
+        test_result = server.add_test_data(obs, fairness=fairness)
+        if fairness:
+            true_forecast, client_forecast, dropped_tf, dropped_cf = test_result
+        else:
+            true_forecast, client_forecast = test_result
         true_forecasts.append(true_forecast)
         client_forecasts.append(client_forecast)
+        if fairness:
+            dropped_tfs.append(dropped_tf)
+            dropped_cfs.append(dropped_cf)
         act = agent.act(obs, reward, done)
         obs, reward, done, info = test_env.step(act)
         if done:
-            # break
             obs = test_env.reset()
-    return np.array(client_forecasts[forecast_window - 1:-1]), np.array(true_forecasts[forecast_window - 1:-1])
+    client_forecasts = np.array(client_forecasts[forecast_window - 1:-1])
+    true_forecasts = np.array(true_forecasts[forecast_window - 1:-1])
+    if fairness:
+        dropped_cfs = np.array(dropped_cfs[forecast_window - 1:-1])
+        dropped_tfs = np.array(dropped_tfs[forecast_window - 1:-1])
+        return client_forecasts, true_forecasts, dropped_cfs, dropped_tfs
+    return client_forecasts, true_forecasts
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Perform experiments with a modified IEEE 118 bus power network.")
     parser.add_argument("-s", "--seed", type=int, default=64, help="Seed for RNG in the experiment.")
-    parser.add_argument("-e", "--episodes", type=int, default=100, help="Number of episodes of training to perform.")
+    parser.add_argument("-e", "--episodes", type=int, default=10, help="Number of episodes of training to perform.")
     parser.add_argument("-t", "--timesteps", type=int, default=100,
                         help="Number of steps per actor to perform in simulation.")
     parser.add_argument("--forecast-window", type=int, default=24,
                         help="Number of prior forecasts to include in the FL models data to inform its prediction.")
-    parser.add_argument("--rounds", type=int, default=10, help="Number of rounds of FL training per episode.")
+    parser.add_argument("--rounds", type=int, default=50, help="Number of rounds of FL training per episode.")
     parser.add_argument("--batch-size", type=int, default=128, help="Batch size for FL training.")
     parser.add_argument("--server-km", action="store_true", help="Use Kickback momentum at the FL server")
     parser.add_argument("--pct-adversaries", type=float, default=0.5,
@@ -164,24 +177,11 @@ if __name__ == "__main__":
     env_name = "l2rpn_idf_2023"
 
     env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=LinesCapacityReward)
-    if args.fairness:
-        env_opponent_kwargs = {
-            "opponent_attack_cooldown": 12*24,
-            "opponent_attack_duration": 12*4,
-            "opponent_budget_per_ts": 0.5,
-            "opponent_init_budget": 0.,
-            "opponent_action_class": grid2op.Action.PowerlineSetAction,
-            "opponent_class": grid2op.Opponent.RandomLineOpponent,
-            "opponent_budget_class": grid2op.Opponent.BaseActionBudget,
-            "kwargs_opponent": {"lines_attacked": env.name_line.tolist()}
-        }
-    else:
-        env_opponent_kwargs = {}
     if not os.path.exists(grid2op.get_current_local_dir() + f"/{env_name}_test"):
         env.train_val_split_random(pct_val=0.0, add_for_test="test", pct_test=10.0)
-    train_env = grid2op.make(
-        env_name + "_train", backend=LightSimBackend(), reward_class=LinesCapacityReward, **env_opponent_kwargs
-    )
+    train_env = grid2op.make(env_name + "_train", backend=LightSimBackend(), reward_class=LinesCapacityReward)
+    if args.fairness:
+        drop_episode = round(args.episodes * 0.4)
 
     agent, _ = evaluate(
         env,
@@ -216,23 +216,39 @@ if __name__ == "__main__":
         add_data(train_env, agent, server, args.timesteps)
         if (e + 1) * args.timesteps > (args.batch_size + args.forecast_window):
             cs = server.step()
+        if e == drop_episode - 1:
+            server.drop_clients()
 
     # The testing phase
     logger.info("Testing the trained model.")
-    test_env = grid2op.make(
-        env_name + "_test", backend=LightSimBackend(), reward_class=LinesCapacityReward, **env_opponent_kwargs
-    )
-    client_forecasts, true_forecasts = test_model(test_env, agent, server, args.forecast_window)
+    test_env = grid2op.make(env_name + "_test", backend=LightSimBackend(), reward_class=LinesCapacityReward)
+    test_results = test_model(test_env, agent, server, args.forecast_window, args.fairness)
+    if args.fairness:
+        client_forecasts, true_forecasts, dropped_cfs, dropped_tfs = test_results
+    else:
+        client_forecasts, true_forecasts = test_results
     client_forecasts = client_forecasts.reshape(-1, 2)[args.forecast_window - 1:-1]
     true_forecasts = true_forecasts.reshape(-1, 2)[args.forecast_window - 1:-1]
+    if args.fairness:
+        dropped_cfs = dropped_cfs.reshape(-1, 2)[args.forecast_window - 1:-1]
+        dropped_tfs = dropped_tfs.reshape(-1, 2)[args.forecast_window - 1:-1]
     args_dict = vars(args)
-    header = "mae,rmse,r2_score," + ",".join(args_dict.keys())
-    results = "{},{},{},{}".format(
+    header = "mae,rmse,r2_score,"
+    if args.fairness:
+        header += "dropped mae,dropped rmse, dropped r2_score,"
+    header += ",".join(args_dict.keys())
+    results = "{},{},{},".format(
         metrics.mean_absolute_error(true_forecasts, client_forecasts),
         math.sqrt(metrics.mean_squared_error(true_forecasts, client_forecasts)),
         metrics.r2_score(true_forecasts, client_forecasts),
-        ",".join([str(v) for v in args_dict.values()])
     )
+    if args.fairness:
+        results += "{},{},{},".format(
+            metrics.mean_absolute_error(dropped_tfs, dropped_cfs),
+            math.sqrt(metrics.mean_squared_error(dropped_tfs, dropped_cfs)),
+            metrics.r2_score(dropped_tfs, dropped_cfs),
+        )
+    results += ",".join([str(v) for v in args_dict.values()])
     if cs:
         header += ",cosine_similarity"
         results += f",{cs}"

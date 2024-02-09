@@ -213,7 +213,7 @@ class Server:
         for client in self.clients:
             client.add_data(obs)
 
-    def add_test_data(self, obs):
+    def add_test_data(self, obs, fairness=False):
         true_forecasts, predicted_forecasts = [], []
         for client in self.clients:
             true_forecast, predicted_forecast = client.add_test_data(obs)
@@ -223,7 +223,22 @@ class Server:
             else:
                 true_forecasts.append(true_forecast)
                 predicted_forecasts.append(predicted_forecast)
-        return np.array(true_forecasts), np.array(predicted_forecasts)
+        true_forecasts, predicted_forecasts = np.array(true_forecasts), np.array(predicted_forecasts)
+        if not fairness:
+            return true_forecasts, predicted_forecasts
+        # Evaluation of the dropped client's performance
+        ndropped_clients = len(self.all_clients) - len(self.clients)
+        d_true_forecasts, d_predicted_forecasts = [], []
+        for client in self.all_clients[-ndropped_clients:]:
+            d_true_forecast, d_predicted_forecast = client.add_test_data(obs)
+            if isinstance(d_true_forecast, list):
+                d_true_forecasts.extend(d_true_forecast)
+                d_predicted_forecasts.extend(d_predicted_forecast)
+            else:
+                d_true_forecasts.append(d_true_forecast)
+                d_predicted_forecasts.append(d_predicted_forecast)
+        d_true_forecasts, d_predicted_forecasts = np.array(d_true_forecasts), np.array(d_predicted_forecasts)
+        return true_forecasts, predicted_forecasts, d_true_forecasts, d_predicted_forecasts
 
     def step(self):
         logger.info("Server is starting federated training of the forecast model")
@@ -242,6 +257,13 @@ class Server:
             all_params.append(params)
             all_losses.append(loss)
         return all_losses, all_params
+
+    def drop_clients(self):
+        logger.info("Dropping clients")
+        self.all_clients = self.clients.copy()
+        nclients = len(self.clients)
+        for _ in range(round(nclients * 0.4)):
+            self.clients.pop()
 
     @property
     def num_clients(self):
