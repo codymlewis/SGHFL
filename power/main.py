@@ -68,9 +68,6 @@ if __name__ == "__main__":
     )
     training_metrics = server.fit()
 
-    if args.fairness:
-        training_metrics, baseline_metrics = training_metrics
-
     testing_metrics = server.analytics()
     centralised_metrics = server.evaluate(X_test, Y_test)
     print(f"{training_metrics=}")
@@ -82,9 +79,6 @@ if __name__ == "__main__":
         backdoor_metrics = server.backdoor_analytics()
         results['backdoor'] = backdoor_metrics
         print(f"{backdoor_metrics=}")
-    elif args.fairness:
-        results['baseline'] = baseline_metrics
-        print(f"{baseline_metrics=}")
 
     os.makedirs("results", exist_ok=True)
     filename = "results/{}_{}.json".format(

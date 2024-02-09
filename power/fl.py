@@ -73,10 +73,11 @@ class Server:
         logger.info("Server starting training for %d rounds", self.config['num_rounds'])
         for r in (pbar := trange(self.config['num_rounds'])):
             if self.config.get("drop_round") == r:
-                baseline_metrics = self.analytics()
                 self.all_clients = self.clients.copy()
-                logger.info("Server is dropping 4 clients")
-                for _ in range(4):
+                n_clients = len(self.all_clients)
+                n_dropped_clients = round(n_clients * 0.4)
+                logger.info(f"Server is dropping {n_dropped_clients} clients")
+                for _ in range(n_dropped_clients):
                     self.clients.pop()
 
             self.config['round'] = r
@@ -84,13 +85,6 @@ class Server:
             pbar.set_postfix_str(f"loss: {metrics['loss']:.3f}")
             logger.info("Loss at the end of round %d: %f", r + 1, metrics['loss'])
         logger.info("Server completed training in %f seconds", time.time() - start_time)
-
-        if self.config.get("drop_round"):
-            if self.config['drop_round'] < self.config['num_rounds']:
-                self.clients = self.all_clients
-                return metrics, baseline_metrics
-            return metrics, self.analytics()  # If there is no drop then the baseline is the same as the other results
-
         return metrics
 
     def step(self):
@@ -116,21 +110,27 @@ class Server:
             all_preds.append(client_preds)
             all_Y_test.append(client_Y_test)
         logger.info("Server completed analytics in %f seconds", time.time() - start_time)
-
-        if self.config['experiment_type'] == "fairness":
-            maes, mses = [], []
-            for p, yt in zip(all_preds, all_Y_test):
-                maes.append(skm.mean_absolute_error(yt, p))
-                mses.append(skm.mean_squared_error(yt, p))
-            return {
-                "MAE": np.mean(maes),
-                "MSE": np.mean(mses),
-                "Dropped MAE": np.mean(maes[-4:]),
-                "Dropped MSE": np.mean(mses[-4:]),
-            }
-
         preds = np.concatenate(all_preds)
         Y_test = np.concatenate(all_Y_test)
+
+        if self.config['experiment_type'] == "fairness":
+            dropped_preds, dropped_Y_test = [], []
+            n_dropped_clients = len(self.all_clients) - len(self.clients)
+            for c in self.all_clients[-n_dropped_clients:]:
+                client_preds, client_Y_test = c.analytics(self.model.parameters.copy(), self.config)
+                dropped_preds.append(client_preds)
+                dropped_Y_test.append(client_Y_test)
+            d_preds = np.concatenate(dropped_preds)
+            d_Y_test = np.concatenate(dropped_Y_test)
+            return {
+                "MAE": skm.mean_absolute_error(Y_test, preds),
+                "RMSE": np.sqrt(skm.mean_squared_error(Y_test, preds)),
+                "r2 score": skm.r2_score(Y_test, preds),
+                "Dropped MAE": skm.mean_absolute_error(d_Y_test, d_preds),
+                "Dropped RMSE": np.sqrt(skm.mean_squared_error(d_Y_test, d_preds)),
+                "Dropped r2 score": skm.r2_score(d_Y_test, d_preds),
+            }
+
         return {
             "MAE": skm.mean_absolute_error(Y_test, preds),
             "RMSE": np.sqrt(skm.mean_squared_error(Y_test, preds)),
