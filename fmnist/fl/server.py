@@ -63,6 +63,7 @@ class Server:
         logger.info(f"Registering {len(clients)} clients to the server")
         for client in clients:
             self.client_manager.register(client)
+        return self
 
     def fit(self) -> History:
         "Perform the configured rounds of training for federated learning."
@@ -139,7 +140,7 @@ class Server:
                 dropped_metrics.append(metrics)
             dropped_agg_metrics = self.strategy.analytics(dropped_metrics, dropped_samples, self.config)
             logger.info(f"Completed dropped analytics in {time.time() - start_time}s")
-            logger.info(f"Aggregated final dropped metrics {aggregated_metrics}")
+            logger.info(f"Aggregated final dropped metrics {dropped_agg_metrics}")
             return aggregated_metrics, dropped_agg_metrics
 
         return aggregated_metrics
