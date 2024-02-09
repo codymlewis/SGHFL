@@ -216,7 +216,7 @@ if __name__ == "__main__":
         add_data(train_env, agent, server, args.timesteps)
         if (e + 1) * args.timesteps > (args.batch_size + args.forecast_window):
             cs = server.step()
-        if e == drop_episode - 1:
+        if args.fairness and e == drop_episode - 1:
             server.drop_clients()
 
     # The testing phase
