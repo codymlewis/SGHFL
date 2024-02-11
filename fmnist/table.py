@@ -2,6 +2,7 @@ from functools import partial
 import argparse
 import os
 import json
+import jax
 import re
 import pandas as pd
 import numpy as np
@@ -35,6 +36,7 @@ def format_final_table(styler):
 
 def env_process_fn(json_file, keyword=""):
     env_name = f"{json_file.replace(f'{keyword}_', '')}"
+    env_name = env_name.replace(f"_experiment={keyword}", '')
     env_name = env_name.replace('.json', '')
     return env_name
 
@@ -63,6 +65,16 @@ def process_train_test_results(data):
     return new_results
 
 
+def process_results(data):
+    new_results = {}
+    for k, v in data.items():
+        if "accuracy" in k or "cosinesimilarity" in k or "asr" in k:
+            new_results[k] = f"{np.mean(v):.3%} ({np.std(v):.3%})"
+        else:
+            new_results[k] = f"{np.mean(v):.3f} ({np.std(v):.3f})"
+    return new_results
+
+
 def process_fairness_environment(env_data):
     environment = env_data[re.search('aggregator=', env_data).end():re.search('aggregator=.*_?(.*_)?', env_data).end()]
     return environment
@@ -84,15 +96,25 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     keyword = 'performance' if args.performance else 'fairness' if args.fairness else 'attack'
-    json_files = [f for f in os.listdir('results') if keyword in f]
+    if args.fairness:
+        json_files = [f for f in os.listdir('results') if f"experiment={keyword}" in f]
+    else:
+        json_files = [f for f in os.listdir('results') if keyword in f]
     env_process = partial(env_process_fn, keyword=keyword)
 
     tabular_data = {}
     for json_file in json_files:
         with open(f"results/{json_file}", 'r') as f:
-            data = make_leaves_lists(json.load(f))
+            if args.fairness:
+                tree_list = list(json.load(f).values())
+                data = jax.tree_util.tree_map(lambda *x: list(x), *tree_list)
+            else:
+                data = make_leaves_lists(json.load(f))
         env_name = env_process(json_file)
-        tabular_data[env_name] = process_train_test_results(data)
+        if args.fairness:
+            tabular_data[env_name] = process_results(data)
+        else:
+            tabular_data[env_name] = process_train_test_results(data)
 
     df = pd.DataFrame(tabular_data).T
     df = df.reset_index()
