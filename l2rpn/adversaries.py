@@ -40,7 +40,7 @@ def lie(mu, sigma, z_max):
 class IPM(Adversary):
     def step(self, global_params, batch_size=128):
         mu, sigma, loss = self.corroborator.calc_grad_stats(global_params, self.id, batch_size)
-        return loss, ipm(global_params, self.corroborator.nadversaries)
+        return loss, ipm(global_params, mu, self.corroborator.nadversaries)
 
 
 @jax.jit

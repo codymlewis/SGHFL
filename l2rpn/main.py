@@ -145,7 +145,7 @@ def test_model(test_env, agent, server, forecast_window, fairness):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Perform experiments with a modified IEEE 118 bus power network.")
     parser.add_argument("-s", "--seed", type=int, default=64, help="Seed for RNG in the experiment.")
-    parser.add_argument("-e", "--episodes", type=int, default=10, help="Number of episodes of training to perform.")
+    parser.add_argument("-e", "--episodes", type=int, default=20, help="Number of episodes of training to perform.")
     parser.add_argument("-t", "--timesteps", type=int, default=100,
                         help="Number of steps per actor to perform in simulation.")
     parser.add_argument("--forecast-window", type=int, default=24,
