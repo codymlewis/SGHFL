@@ -175,6 +175,8 @@ def cosine_similarity(client_parameters: List[NDArray]) -> float:
 class MiddleServer:
     def __init__(self, clients, config):
         match config.get('aggregator'):
+            case "mrcs":
+                self.aggregator = MRCS()
             case "topk_kickback":
                 self.aggregator = TopKKickbackMomentum()
             case "kickback":
@@ -305,6 +307,35 @@ class FedProx:
         self.episode += 1
         grads = np.average([cp - parameters for cp in client_parameters], weights=client_samples, axis=0)
         return parameters + grads - config['mu'] * (parameters - self.prev_parameters)
+
+
+class MRCS:
+    def __init__(self):
+        self.momentum = None
+
+    def aggregate(
+        self,
+        client_parameters: List[NDArray],
+        client_samples: List[int],
+        parameters: NDArray,
+        config: Dict[str, str | int | float]
+    ) -> NDArray:
+        client_grads = [cp - parameters for cp in client_parameters]
+        p_vals = []
+        for c_grads in client_grads:
+            if self.momentum is None:
+                p_vals.append(1)
+            else:
+                sim = np.sum(self.momentum * c_grads) / (np.linalg.norm(self.momentum) * np.linalg.norm(c_grads))
+                p_vals.append(max(0, sim))
+        if np.sum(p_vals) == 0:
+            p_vals = np.ones_like(p_vals)
+        p_vals = np.array(p_vals) / np.sum(p_vals)
+        agg_updates = np.sum((p_vals * np.array(client_grads).T).T, axis=0)
+        if self.momentum is None:
+            self.momentum = np.zeros_like(parameters)
+        self.momentum = (1 - config["mu"]) * self.momentum + config["mu"] * agg_updates
+        return parameters + self.momentum
 
 
 class KickbackMomentum:

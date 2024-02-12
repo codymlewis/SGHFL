@@ -341,13 +341,61 @@ def cosine_similarity(global_params, client_parameters):
     return similarity_matrix.sum() / (len(client_grads) * (len(client_grads) - 1))
 
 
+class MRCS:
+    def __init__(self, global_params, mu=0.9, aggregate_fn=fedavg):
+        self.global_params = global_params
+        self.momentum = None
+        self.mu = mu
+        self.aggregate = aggregate_fn
+
+    def __call__(self, all_params):
+        all_grads = [tree_sub(cp, self.global_params) for cp in all_params]
+        p_vals = []
+        for grads in all_grads:
+            if self.momentum is None:
+                p_vals.append(1)
+            else:
+                sim = cs(self.momentum, grads)
+                p_vals.append(jax.nn.relu(sim))
+        if np.sum(p_vals) == 0:
+            p_vals = jnp.ones_like(p_vals)
+        p_vals = jnp.array(p_vals)
+        p_vals = p_vals / jnp.sum(p_vals)
+        print(f"{p_vals}")
+        agg_grads = tree_average(all_grads, p_vals)
+        if self.momentum is None:
+            self.momentum = jax.tree_util.tree_map(jnp.zeros_like, self.global_params)
+        self.momentum = polyak_average(self.momentum, agg_grads, self.mu)
+        self.global_params = tree_sub(self.global_params, self.momentum)
+        return self.global_params
+
+
+@jax.jit
+def cs(A, B):
+    A = jax.flatten_util.ravel_pytree(A)[0]
+    B = jax.flatten_util.ravel_pytree(B)[0]
+    return jnp.sum(A * B) / (jnp.linalg.norm(A) * jnp.linalg.norm(B))
+
+
+@jax.jit
+def tree_average(trees, weights):
+    return jax.tree_util.tree_map(lambda *x: jnp.sum((weights * jnp.array(x).T).T, axis=0), *trees)
+
+
+@jax.jit
+def polyak_average(old_value, new_value, mu):
+    return jax.tree_util.tree_map(lambda o, n: (1 - mu) * o + mu * n, old_value, new_value)
+
+
 class MiddleServer:
-    def __init__(self, global_params, clients, aggregate_fn=fedavg, kickback_momentum=False, use_fedprox=False):
+    def __init__(self, global_params, clients, aggregate_fn=fedavg, kickback_momentum=False, use_fedprox=False, mrcs=False):
         self.clients = clients
         if kickback_momentum:
             self.aggregate = KickbackMomentum(global_params, aggregate_fn=aggregate_fn)
         elif use_fedprox:
             self.aggregate = FedProx(global_params, aggregate_fn=aggregate_fn)
+        elif mrcs:
+            self.aggregate = MRCS(global_params, aggregate_fn=aggregate_fn)
         else:
             self.aggregate = aggregate_fn
 

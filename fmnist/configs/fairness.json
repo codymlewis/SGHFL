@@ -48,6 +48,15 @@
             "k": 0.9,
             "mu1": 0.9,
             "mu2": 0.666
-        }
+        },
+	{
+	    "aggregator": "mrcs",
+	    "mu": 0.9
+	},
+	{
+	    "aggregator": "mrcs",
+	    "mu": 0.9,
+	    "num_finetune_episodes": 2
+	}
     ]
 }

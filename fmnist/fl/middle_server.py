@@ -16,6 +16,8 @@ class MiddleServer(Client):
 
     def __init__(self, strategy_name: Optional[str] = None, client_manager: Optional[ClientManager] = None):
         match strategy_name:
+            case "mrcs":
+                self.strategy = strategy.MRCS()
             case "topk_kickback":
                 self.strategy = strategy.TopKKickbackMomentum()
             case "kickback":

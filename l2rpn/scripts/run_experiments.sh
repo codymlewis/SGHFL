@@ -17,6 +17,6 @@ for attack in "empty" "lie" "ipm"; do
     done
 done
 
-for extra in {'','--middle-server-aggregator topk'}' '{'','--middle-server-km','--middle-server-fp'}' '{'','--intermediate-finetuning 5'}; do
+for extra in {'','--middle-server-aggregator topk'}' '{'','--middle-server-km','--middle-server-fp','--middle-server-mrcs'}' '{'','--intermediate-finetuning 5'}; do
     run_many_seeds "python main.py --fairness $extra" 10
 done

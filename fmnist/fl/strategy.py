@@ -138,6 +138,39 @@ class FedProx(FedAVG):
         return [p + g + config['mu'] * (p - pp) for p, pp, g in zip(parameters, self.prev_parameters, grads)]
 
 
+class MRCS(FedAVG):
+    def __init__(self):
+        self.momentum = None
+
+    def aggregate(
+        self,
+        client_parameters: List[Parameters],
+        client_samples: List[int],
+        parameters: Parameters,
+        config: Dict[str, str | int | float]
+    ) -> Parameters:
+        client_grads = [
+            [clayer - slayer for clayer, slayer in zip(client_params, parameters)]
+            for client_params in client_parameters
+        ]
+        p_vals = []
+        for c_grads in client_grads:
+            if self.momentum is None:
+                p_vals.append(1)
+            else:
+                sim = np.sum([np.sum(m * cg) for m, cg in zip(self.momentum, c_grads)])
+                sim = sim / (np.sqrt(np.sum([np.sum(m**2) for m in self.momentum])) * np.sqrt(np.sum([np.sum(cg**2) for cg in c_grads])))
+                p_vals.append(max(0, sim))
+        if np.sum(p_vals) == 0:
+            p_vals = np.ones_like(p_vals)
+        p_vals = np.array(p_vals) / np.sum(p_vals)
+        agg_updates = [np.average(clayer, weights=p_vals, axis=0) for clayer in to_attribute_array(client_grads)]
+        if self.momentum is None:
+            self.momentum = [np.zeros_like(p) for p in parameters]
+        self.momentum = [(1 - config["mu"]) * m + config["mu"] * au for m, au in zip(self.momentum, agg_updates)]
+        return [p + m for p, m in zip(parameters, self.momentum)]
+
+
 class KickbackMomentum(FedAVG):
     def __init__(self):
         self.momentum = None

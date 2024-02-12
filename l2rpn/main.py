@@ -38,6 +38,7 @@ def setup(
     server_km=False,
     middle_server_km=False,
     middle_server_fp=False,
+    middle_server_mrcs=False,
     intermediate_finetuning=0,
     compute_cs=False,
     attack="",
@@ -79,6 +80,7 @@ def setup(
                 aggregate_fn=getattr(fl, middle_server_aggregator),
                 kickback_momentum=middle_server_km,
                 use_fedprox=middle_server_fp,
+                mrcs=middle_server_mrcs,
             )
             for cids in ms_cids
         ]
@@ -157,6 +159,7 @@ if __name__ == "__main__":
                         help="Percentage of clients to assign as adversaries, if performing an attack evaluation")
     parser.add_argument("--middle-server-km", action="store_true", help="Use Kickback momentum at the FL middle server")
     parser.add_argument("--middle-server-fp", action="store_true", help="Use FedProx at the FL middle server")
+    parser.add_argument("--middle-server-mrcs", action="store_true", help="Use MRCS at the FL middle server")
     parser.add_argument("--intermediate-finetuning", type=int, default=0,
                         help="Finetune the FL models for n episodes prior to testing")
     parser.add_argument("--server-aggregator", type=str, default="fedavg",
@@ -174,7 +177,8 @@ if __name__ == "__main__":
     start_time = time.time()
     rng = np.random.default_rng(args.seed)
     rngkey = jax.random.PRNGKey(args.seed)
-    env_name = "l2rpn_idf_2023"
+    # env_name = "l2rpn_idf_2023"
+    env_name = "l2rpn_case14_sandbox"
 
     env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=LinesCapacityReward)
     if not os.path.exists(grid2op.get_current_local_dir() + f"/{env_name}_test"):
@@ -203,6 +207,7 @@ if __name__ == "__main__":
         middle_server_aggregator=args.middle_server_aggregator,
         middle_server_km=args.middle_server_km,
         middle_server_fp=args.middle_server_fp,
+        middle_server_mrcs=args.middle_server_mrcs,
         intermediate_finetuning=args.intermediate_finetuning,
         compute_cs=not args.attack and not args.fairness,
         attack=args.attack,
