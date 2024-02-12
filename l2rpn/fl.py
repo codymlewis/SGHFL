@@ -357,16 +357,15 @@ class MRCS:
             else:
                 sim = cs(self.momentum, grads)
                 p_vals.append(jax.nn.relu(sim))
-        if np.sum(p_vals) == 0:
-            p_vals = jnp.ones_like(p_vals)
         p_vals = jnp.array(p_vals)
+        if jnp.sum(p_vals) == 0:
+            p_vals = jnp.ones_like(p_vals)
         p_vals = p_vals / jnp.sum(p_vals)
-        print(f"{p_vals}")
         agg_grads = tree_average(all_grads, p_vals)
         if self.momentum is None:
             self.momentum = jax.tree_util.tree_map(jnp.zeros_like, self.global_params)
         self.momentum = polyak_average(self.momentum, agg_grads, self.mu)
-        self.global_params = tree_sub(self.global_params, self.momentum)
+        self.global_params = tree_add(self.global_params, self.momentum)
         return self.global_params
 
 

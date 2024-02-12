@@ -177,8 +177,7 @@ if __name__ == "__main__":
     start_time = time.time()
     rng = np.random.default_rng(args.seed)
     rngkey = jax.random.PRNGKey(args.seed)
-    # env_name = "l2rpn_idf_2023"
-    env_name = "l2rpn_case14_sandbox"
+    env_name = "l2rpn_idf_2023"
 
     env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=LinesCapacityReward)
     if not os.path.exists(grid2op.get_current_local_dir() + f"/{env_name}_test"):
