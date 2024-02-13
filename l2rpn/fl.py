@@ -108,7 +108,7 @@ def trimmed_mean(all_params):
 
 @jax.jit
 def centre(all_params):
-    nclusters = len(all_params) // 4 + 1
+    nclusters = len(all_params) // 2 + 1
     return jax.tree_util.tree_map(lambda *x: kmeans.fit(jnp.array(x), nclusters)['centroids'].mean(axis=0), *all_params)
 
 
@@ -182,7 +182,6 @@ class Server:
         rounds,
         batch_size,
         aggregate_fn=fedavg,
-        kickback_momentum=False,
         compute_cs=False,
         finetune_episodes=0,
     ):
@@ -191,10 +190,7 @@ class Server:
         self.clients = clients
         self.rounds = rounds
         self.batch_size = batch_size
-        if kickback_momentum:
-            self.aggregate = KickbackMomentum(global_params, aggregate_fn=aggregate_fn)
-        else:
-            self.aggregate = aggregate_fn
+        self.aggregate = aggregate_fn
         self.finetune_episodes = finetune_episodes
         self.compute_cs = compute_cs
 
@@ -243,20 +239,21 @@ class Server:
     def step(self):
         logger.info("Server is starting federated training of the forecast model")
         for _ in range(self.rounds):
-            all_losses, all_params = self.inner_step()
-            self.global_params = self.aggregate(all_params)
+            all_losses, all_grads = self.inner_step()
+            self.global_params = tree_add(self.global_params, self.aggregate(all_grads))
         logger.info(f"Done. FL Server Loss: {np.mean(all_losses):.5f}")
         if self.compute_cs:
             return cosine_similarity(self.global_params, all_params)
 
     def inner_step(self):
-        all_params = []
+        all_grads = []
         all_losses = []
         for client in self.clients:
             loss, params = client.step(self.global_params, self.batch_size)
-            all_params.append(params)
+            grads = tree_sub(params, self.global_params)
+            all_grads.append(grads)
             all_losses.append(loss)
-        return all_losses, all_params
+        return all_losses, all_grads
 
     def drop_clients(self):
         logger.info("Dropping clients")

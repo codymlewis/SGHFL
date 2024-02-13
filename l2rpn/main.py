@@ -35,7 +35,6 @@ def setup(
     num_middle_servers,
     server_aggregator="fedavg",
     middle_server_aggregator="fedavg",
-    server_km=False,
     middle_server_km=False,
     middle_server_fp=False,
     middle_server_mrcs=False,
@@ -91,7 +90,6 @@ def setup(
         clients,
         rounds,
         batch_size,
-        kickback_momentum=server_km,
         compute_cs=compute_cs,
         finetune_episodes=intermediate_finetuning,
         aggregate_fn=getattr(fl, server_aggregator),
@@ -147,14 +145,13 @@ def test_model(test_env, agent, server, forecast_window, fairness):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Perform experiments with a modified IEEE 118 bus power network.")
     parser.add_argument("-s", "--seed", type=int, default=64, help="Seed for RNG in the experiment.")
-    parser.add_argument("-e", "--episodes", type=int, default=20, help="Number of episodes of training to perform.")
+    parser.add_argument("-e", "--episodes", type=int, default=10, help="Number of episodes of training to perform.")
     parser.add_argument("-t", "--timesteps", type=int, default=100,
                         help="Number of steps per actor to perform in simulation.")
     parser.add_argument("--forecast-window", type=int, default=24,
                         help="Number of prior forecasts to include in the FL models data to inform its prediction.")
     parser.add_argument("--rounds", type=int, default=50, help="Number of rounds of FL training per episode.")
     parser.add_argument("--batch-size", type=int, default=128, help="Batch size for FL training.")
-    parser.add_argument("--server-km", action="store_true", help="Use Kickback momentum at the FL server")
     parser.add_argument("--pct-adversaries", type=float, default=0.5,
                         help="Percentage of clients to assign as adversaries, if performing an attack evaluation")
     parser.add_argument("--middle-server-km", action="store_true", help="Use Kickback momentum at the FL middle server")
@@ -178,6 +175,7 @@ if __name__ == "__main__":
     rng = np.random.default_rng(args.seed)
     rngkey = jax.random.PRNGKey(args.seed)
     env_name = "l2rpn_idf_2023"
+    # env_name = "l2rpn_case14_sandbox" # Just for testing
 
     env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=LinesCapacityReward)
     if not os.path.exists(grid2op.get_current_local_dir() + f"/{env_name}_test"):
@@ -202,7 +200,6 @@ if __name__ == "__main__":
         args.batch_size,
         args.num_middle_servers,
         server_aggregator=args.server_aggregator,
-        server_km=args.server_km,
         middle_server_aggregator=args.middle_server_aggregator,
         middle_server_km=args.middle_server_km,
         middle_server_fp=args.middle_server_fp,
@@ -239,7 +236,7 @@ if __name__ == "__main__":
     args_dict = vars(args)
     header = "mae,rmse,r2_score,"
     if args.fairness:
-        header += "dropped mae,dropped rmse, dropped r2_score,"
+        header += "dropped mae,dropped rmse,dropped r2_score,"
     header += ",".join(args_dict.keys())
     results = "{},{},{},".format(
         metrics.mean_absolute_error(true_forecasts, client_forecasts),
