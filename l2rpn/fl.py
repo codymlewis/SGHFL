@@ -243,7 +243,7 @@ class Server:
             self.global_params = tree_add(self.global_params, self.aggregate(all_grads))
         logger.info(f"Done. FL Server Loss: {np.mean(all_losses):.5f}")
         if self.compute_cs:
-            return cosine_similarity(self.global_params, all_params)
+            return cosine_similarity(self.global_params, all_grads)
 
     def inner_step(self):
         all_grads = []
