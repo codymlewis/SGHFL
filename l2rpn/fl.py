@@ -199,7 +199,8 @@ class Server:
             client.reset()
 
     def setup_test(self):
-        for client in self.clients:
+        client_list = self.clients if not hasattr(self, "all_clients") else self.all_clients
+        for client in client_list:
             client.set_params(self.global_params)
             for _ in range(self.finetune_episodes):
                 client.step(self.global_params, self.batch_size)
@@ -274,7 +275,7 @@ class Server:
 
 
 class KickbackMomentum:
-    def __init__(self, global_params, mu1=0.9, mu2=0.1, aggregate_fn=fedavg):
+    def __init__(self, global_params, mu1=0.5, mu2=0.1, aggregate_fn=fedavg):
         self.global_params = global_params
         self.momentum = None
         self.prev_parameters = None
@@ -299,8 +300,8 @@ def calc_inner_momentum(momentum, params, prev_params, mu):
 
 
 @jax.jit
-def calc_outer_momentum(momentum, grads, prev_params, mu):
-    return jax.tree_util.tree_map(lambda m, g, pp: pp + mu * m + g, momentum, grads, prev_params)
+def calc_outer_momentum(momentum, grads, params, mu):
+    return jax.tree_util.tree_map(lambda m, g, p: p + mu * m + g, momentum, grads, params)
 
 
 class FedProx:
@@ -332,14 +333,14 @@ def tree_add(tree_a, tree_b):
     return jax.tree_util.tree_map(lambda a, b: a + b, tree_a, tree_b)
 
 
-def cosine_similarity(global_params, client_parameters):
-    client_grads = [jax.flatten_util.ravel_pytree(tree_sub(global_params, cp))[0] for cp in client_parameters]
+def cosine_similarity(global_params, client_grads):
+    client_grads = [jax.flatten_util.ravel_pytree(cg)[0] for cg in client_grads]
     similarity_matrix = np.abs(metrics.pairwise.cosine_similarity(client_grads)) - np.eye(len(client_grads))
     return similarity_matrix.sum() / (len(client_grads) * (len(client_grads) - 1))
 
 
 class MRCS:
-    def __init__(self, global_params, mu=0.9, aggregate_fn=fedavg):
+    def __init__(self, global_params, mu=0.7, aggregate_fn=fedavg):
         self.global_params = global_params
         self.momentum = None
         self.mu = mu
@@ -353,7 +354,7 @@ class MRCS:
                 p_vals.append(1)
             else:
                 sim = cs(self.momentum, grads)
-                p_vals.append(jax.nn.relu(sim))
+                p_vals.append(max(0, sim))
         p_vals = jnp.array(p_vals)
         if jnp.sum(p_vals) == 0:
             p_vals = jnp.ones_like(p_vals)
