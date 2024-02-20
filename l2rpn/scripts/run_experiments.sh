@@ -7,7 +7,7 @@ run_many_seeds () {
     done
 }
 
-for extra in {'','--middle-server-km'}' '{'','--intermediate-finetuning 5'}; do
+for extra in {'','--middle-server-km','--middle-server-fp'}' '{'','--intermediate-finetuning 5'}; do
     run_many_seeds "python main.py $extra" 10
 done
 
