@@ -80,13 +80,13 @@ if __name__ == "__main__":
     else:
         df = df.drop(columns=[
             "attack",
-            "middle_server_fp",
             "middle_server_mrcs",
             "server_aggregator",
         ])
         df.middle_server_aggregator += [" with km" if km else "" for km in df.middle_server_km]
+        df.middle_server_aggregator += [" with fedprox" if fp else "" for fp in df.middle_server_fp]
         df.middle_server_aggregator += [" with if" if inter_ft > 0 else "" for inter_ft in df.intermediate_finetuning]
-        df = df.drop(columns=["middle_server_km", "intermediate_finetuning"])
+        df = df.drop(columns=["middle_server_km", "middle_server_fp", "intermediate_finetuning"])
         grouping_cols = ["middle_server_aggregator"]
     grouped_df = df.groupby(grouping_cols)
     mean_df = grouped_df.mean().reset_index()
