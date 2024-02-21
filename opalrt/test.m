@@ -23,7 +23,7 @@ function [mae, r2] = test()
     endfor
 
     globalParams = nn.initModel(columns(trainX), columns(trainY));
-    globalState = fl.initFedavg(globalParams);
+    globalState = fl.initFedProx(globalParams);
     for r = 1:rounds
         lossValues = zeros([nclients, 1]);
         clientGrads = repmat(struct(), [nclients, 1]);
@@ -32,7 +32,7 @@ function [mae, r2] = test()
                 globalParams, clients(c).state, clients(c).X, clients(c).Y, epochs=1
             );
         endfor
-        [globalUpdates, globalState] = fl.applyFedavg(globalState, clientGrads);
+        [globalUpdates, globalState] = fl.applyFedProx(globalState, clientGrads);
         globalParams = nn.applyUpdates(globalParams, globalUpdates);
         disp(sprintf("Average training loss at round %d: %f", r, mean(lossValues)));
     endfor
