@@ -16,14 +16,11 @@ function [mae, r2] = test()
     for c = 1:nclients
         i = (c - 1) * nsamplesPerClient + 1;
         idx = idxs(i:min(i + nsamplesPerClient - 1, rows(trainX)));
-        clients(c).X = trainX(idx);
-        clients(c).Y = trainY(idx);
-        clients(c).params = nn.initModel(columns(trainX), columns(trainY));
-        clients(c).state = nn.initAdam(clients(c).params);
+        clients(c) = fl.clientInit(trainX(idx), trainY(idx));
     endfor
 
     globalParams = nn.initModel(columns(trainX), columns(trainY));
-    globalState = fl.initFedProx(globalParams);
+    globalState = fl.initMRCS(globalParams);
     for r = 1:rounds
         lossValues = zeros([nclients, 1]);
         clientGrads = repmat(struct(), [nclients, 1]);
@@ -32,9 +29,13 @@ function [mae, r2] = test()
                 globalParams, clients(c).state, clients(c).X, clients(c).Y, epochs=1
             );
         endfor
-        [globalUpdates, globalState] = fl.applyFedProx(globalState, clientGrads);
+        [globalUpdates, globalState] = fl.applyMRCS(globalState, clientGrads);
         globalParams = nn.applyUpdates(globalParams, globalUpdates);
-        disp(sprintf("Average training loss at round %d: %f", r, mean(lossValues)));
+        disp(sprintf(
+            "Average training loss at round %d: %f, cosine similarity %f",
+            r,
+            mean(lossValues),
+            metrics.cosineSimilarity(clientGrads)));
     endfor
 
     lossValue = nn.loss(globalParams, testX, testY);

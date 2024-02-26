@@ -1,5 +1,5 @@
 ## Lloyd's algorithm for clustering
-function centroids = kMeansClustering(centroids, samples, numIterations=300, tol=0.001)
+function centroids = kMeansClustering(centroids, samples, numIterations=300, tol=0.0001)
     dists = zeros([rows(samples), rows(centroids)]);
     for iter = 1:numIterations
         for i = 1:rows(centroids)
