@@ -28,8 +28,10 @@ if __name__ == "__main__":
     parser.add_argument("-a", "--attack", action="store_true",
                         help="Perform experiments evaluating the vulnerability to and mitigation of attacks.")
     parser.add_argument("-f", "--fairness", action="store_true", help="Perform experiments evaluating the fairness.")
-    parser.add_argument("--pct-adversaries", type=float, default=0.5,
-                        help="Percentage of clients to assign as adversaries, if performing an attack evaluation")
+    parser.add_argument("--pct-dc-adversaries", type=float, default=0.5,
+                        help="Percentage of middle servers to assign as adversaries, if performing an attack evaluation")
+    parser.add_argument("--pct-saturation", type=float, default=1.0,
+                        help="The percentage of clients under adversary middle servers to assign as adversaries.")
     args = parser.parse_args()
 
     start_time = time.time()
@@ -40,8 +42,8 @@ if __name__ == "__main__":
     experiment_config['experiment_type'] = keyword
 
     client_data, X_test, Y_test = load_data.load_data(args.dataset)
+    regions = load_data.load_regions(args.dataset)
     if args.performance or args.fairness:
-        regions = load_data.load_regions(args.dataset)
         network_arch = [
             fl.MiddleServer([fl.Client(client_data[r]) for r in region], experiment_config) for region in regions
         ]
@@ -57,8 +59,15 @@ if __name__ == "__main__":
             else:
                 adversary_type = partial(adversaries.BackdoorLIE, corroborator=corroborator)
         network_arch = [
-            adversary_type(d) if i + 1 > math.ceil(len(client_data) * (1 - args.pct_adversaries)) else fl.Client(d)
-            for i, d in enumerate(client_data)
+            fl.MiddleServer(
+                [
+                    adversary_type(client_data[r])
+                    if (dc + 1 > math.ceil(len(regions) * (1 - args.pct_dc_adversaries))) and (c + 1 > math.ceil(len(region) * (1 - args.pct_saturation)))
+                    else fl.Client(client_data[r])
+                    for c, r in enumerate(region)
+                ],
+                experiment_config
+            ) for dc, region in enumerate(regions)
         ]
 
     server = fl.Server(
@@ -81,9 +90,10 @@ if __name__ == "__main__":
         print(f"{backdoor_metrics=}")
 
     os.makedirs("results", exist_ok=True)
-    filename = "results/{}_{}.json".format(
+    filename = "results/{}_{}{}.json".format(
         args.dataset,
         '_'.join([f'{k}={v}' for k, v in experiment_config.items() if k not in ['repeat', 'round']]),
+        f"_percent_dc_adversaries={args.pct_dc_adversaries}_saturation={args.pct_saturation}" if args.attack else ""
     )
     with open(filename, "w") as f:
         json.dump(results, f)
