@@ -32,7 +32,6 @@ def setup(
     forecast_window,
     rounds,
     batch_size,
-    num_middle_servers,
     server_aggregator="fedavg",
     middle_server_aggregator="fedavg",
     middle_server_km=False,
@@ -42,11 +41,13 @@ def setup(
     compute_cs=False,
     attack="",
     pct_adversaries=0.5,
+    pct_saturation=1.0,
     seed=0,
 ):
+    num_middle_servers = 10
     forecast_model = fl.ForecastNet()
     global_params = forecast_model.init(jax.random.PRNGKey(seed), jnp.zeros((1, 2 * forecast_window + 2)))
-    substation_ids = set(env.load_to_subid) | set(env.gen_to_subid)
+    substation_ids = list(set(env.load_to_subid) | set(env.gen_to_subid))
 
     if attack == "":
         adversary_type = fl.Client
@@ -58,36 +59,30 @@ def setup(
             adversary_type = partial(adversaries.LIE, corroborator=corroborator)
         elif attack == "ipm":
             adversary_type = partial(adversaries.IPM, corroborator=corroborator)
-    clients = [
-        (adversary_type if i + 1 > math.ceil(len(substation_ids) * (1 - pct_adversaries)) else fl.Client)(
-            i,
-            forecast_model,
-            np_indexof(env.load_to_subid, si),
-            np_indexof(env.gen_to_subid, si),
-            num_episodes,
-            forecast_window,
-        )
-        for i, si in enumerate(substation_ids)
+    middle_servers = [
+        fl.MiddleServer(
+            global_params,
+            [
+                (adversary_type if (dc + 1 > math.ceil(num_middle_servers * (1 - pct_adversaries))) and
+                    (c + 1 > math.ceil(len(sids) * (1 - pct_saturation))) else fl.Client)(
+                    c,
+                    forecast_model,
+                    np_indexof(env.load_to_subid, si),
+                    np_indexof(env.gen_to_subid, si),
+                    num_episodes,
+                    forecast_window
+                ) for c, si in enumerate(sids)
+            ],
+            aggregate_fn=getattr(fl, middle_server_aggregator),
+            kickback_momentum=middle_server_km,
+            use_fedprox=middle_server_fp,
+            mrcs=middle_server_mrcs,
+        ) for dc, sids in enumerate(np.array_split(substation_ids, num_middle_servers))
     ]
-    if num_middle_servers:
-        lower_clients = clients
-        ms_cids = np.array_split(np.arange(len(lower_clients)), num_middle_servers)
-        middle_servers = [
-            fl.MiddleServer(
-                global_params,
-                [lower_clients[i] for i in cids],
-                aggregate_fn=getattr(fl, middle_server_aggregator),
-                kickback_momentum=middle_server_km,
-                use_fedprox=middle_server_fp,
-                mrcs=middle_server_mrcs,
-            )
-            for cids in ms_cids
-        ]
-        clients = middle_servers  # Middle servers are the clients for the top level server
     server = fl.Server(
         forecast_model,
         global_params,
-        clients,
+        middle_servers,
         rounds,
         batch_size,
         compute_cs=compute_cs,
@@ -154,6 +149,8 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=128, help="Batch size for FL training.")
     parser.add_argument("--pct-adversaries", type=float, default=0.5,
                         help="Percentage of clients to assign as adversaries, if performing an attack evaluation")
+    parser.add_argument("--pct-saturation", type=float, default=1.0,
+                        help="The percentage of clients under adversary middle servers to assign as adversaries.")
     parser.add_argument("--middle-server-km", action="store_true", help="Use Kickback momentum at the FL middle server")
     parser.add_argument("--middle-server-fp", action="store_true", help="Use FedProx at the FL middle server")
     parser.add_argument("--middle-server-mrcs", action="store_true", help="Use MRCS at the FL middle server")
@@ -163,7 +160,6 @@ if __name__ == "__main__":
                         help="Aggregation algorithm to use at the FL server.")
     parser.add_argument("--middle-server-aggregator", type=str, default="fedavg",
                         help="Aggregation algorithm to use at the FL middle server.")
-    parser.add_argument("--num-middle-servers", type=int, default=10, help="Number of middle server for the HFL")
     parser.add_argument("--fairness", action="store_true", help="Perform the fairness evaluation.")
     parser.add_argument("--attack", type=str, default="",
                         help="Perform model poisoning on the federated learning model.")
@@ -198,7 +194,6 @@ if __name__ == "__main__":
         args.forecast_window,
         args.rounds,
         args.batch_size,
-        args.num_middle_servers,
         server_aggregator=args.server_aggregator,
         middle_server_aggregator=args.middle_server_aggregator,
         middle_server_km=args.middle_server_km,
@@ -208,6 +203,7 @@ if __name__ == "__main__":
         compute_cs=not args.attack and not args.fairness,
         attack=args.attack,
         pct_adversaries=args.pct_adversaries,
+        pct_saturation=args.pct_saturation,
         seed=args.seed,
     )
     num_clients = server.num_clients

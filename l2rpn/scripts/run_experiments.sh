@@ -13,7 +13,17 @@ done
 
 for attack in "empty" "lie" "ipm"; do
     for aggregator in "fedavg" "median" "centre" "krum" "trimmed_mean"; do
-        run_many_seeds "python main.py --attack $attack --server-aggregator $aggregator --num-middle-servers 0" 10
+        for sat in $(seq 0 0.1 1); do
+            run_many_seeds "python main.py --attack $attack --server-aggregator $aggregator --pct-saturation $sat --pct-adversaries 1.0" 10
+        done
+        for adv in $(seq 0 0.1 1); do
+            run_many_seeds "python main.py --attack $attack --server-aggregator $aggregator --pct-saturation 1.0 --pct-adversaries $adv" 10
+
+            if [ $adv -gt 0.4 ]; then
+                sat="$((0.5  / $adv))"
+                run_many_seeds "python main.py --attack $attack --server-aggregator $aggregator --pct-saturation $sat --pct-adversaries $adv" 10
+            fi
+        done
     done
 done
 
