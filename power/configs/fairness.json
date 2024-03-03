@@ -5,55 +5,55 @@
     "drop_round": 8,
     "experiments": [
         {
-            "aggregator": "fedavg"
+            "middle_server_aggregator": "fedavg"
         },
         {
-            "aggregator": "fedprox",
-	    "mu": 0.00001
+            "middle_server_aggregator": "fedprox",
+            "mu": 0.00001
         },
         {
-	    "aggregator": "kickback",
+            "middle_server_aggregator": "kickback",
             "mu1": 0.9,
             "mu2": 0.666
         },
         {
-	    "aggregator": "fedavg",
+            "middle_server_aggregator": "fedavg",
             "num_finetune_episodes": 5
         },
         {
-	    "aggregator": "kickback",
+            "middle_server_aggregator": "kickback",
             "num_finetune_episodes": 5,
             "mu1": 0.9,
             "mu2": 0.666
         },
         {
-	    "aggregator": "topk",
+            "middle_server_aggregator": "topk",
             "k": 0.9
         },
         {
-	    "aggregator": "topk",
+            "middle_server_aggregator": "topk",
             "num_finetune_episodes": 5,
             "k": 0.9
         },
         {
-	    "aggregator": "topk_kickback",
+            "middle_server_aggregator": "topk_kickback",
             "k": 0.9,
             "mu1": 0.9,
             "mu2": 0.666
         },
         {
-	    "aggregator": "topk_kickback",
+            "middle_server_aggregator": "topk_kickback",
             "num_finetune_episodes": 5,
             "k": 0.9,
             "mu1": 0.9,
             "mu2": 0.666
         },
         {
-            "aggregator": "mrcs",
+            "middle_server_aggregator": "mrcs",
             "mu": 0.9
         },
         {
-            "aggregator": "mrcs",
+            "middle_server_aggregator": "mrcs",
             "num_finetune_episodes": 5,
             "mu": 0.9
         }

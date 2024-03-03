@@ -4,19 +4,19 @@
     "num_epochs": 1,
     "experiments": [
         {
-	    "aggregator": "fedavg"
-	},
+            "middle_server_aggregator": "fedavg"
+        },
         {
-	    "aggregator": "fedprox",
-	    "mu": 0.00001
-	},
-	{
-	    "aggregator": "kickback",
+            "middle_server_aggregator": "fedprox",
+            "mu": 0.00001
+        },
+        {
+            "middle_server_aggregator": "kickback",
             "mu1": 0.9,
             "mu2": 0.666
         },
         {
-	    "aggregator": "kickback",
+            "middle_server_aggregator": "kickback",
             "num_finetune_episodes": 5,
             "mu1": 0.9,
             "mu2": 0.666

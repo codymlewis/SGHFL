@@ -5,63 +5,63 @@
     "experiments": [
         {
             "attack": "empty",
-            "aggregator": "fedavg"
+            "server_aggregator": "fedavg"
         },
         {
             "attack": "empty",
-            "aggregator": "median"
+            "server_aggregator": "median"
         },
         {
             "attack": "empty",
-            "aggregator": "centre"
+            "server_aggregator": "centre"
         },
         {
             "attack": "empty",
-            "aggregator": "krum"
+            "server_aggregator": "krum"
         },
         {
             "attack": "empty",
-            "aggregator": "trimmed_mean"
+            "server_aggregator": "trimmed_mean"
         },
         {
             "attack": "ipm",
-            "aggregator": "fedavg"
+            "server_aggregator": "fedavg"
         },
         {
             "attack": "ipm",
-            "aggregator": "median"
+            "server_aggregator": "median"
         },
         {
             "attack": "ipm",
-            "aggregator": "centre"
+            "server_aggregator": "centre"
         },
         {
             "attack": "ipm",
-            "aggregator": "krum"
+            "server_aggregator": "krum"
         },
         {
             "attack": "ipm",
-            "aggregator": "trimmed_mean"
+            "server_aggregator": "trimmed_mean"
         },
         {
             "attack": "lie",
-            "aggregator": "fedavg"
+            "server_aggregator": "fedavg"
         },
         {
             "attack": "lie",
-            "aggregator": "median"
+            "server_aggregator": "median"
         },
         {
             "attack": "lie",
-            "aggregator": "centre"
+            "server_aggregator": "centre"
         },
         {
             "attack": "lie",
-            "aggregator": "krum"
+            "server_aggregator": "krum"
         },
         {
             "attack": "lie",
-            "aggregator": "trimmed_mean"
+            "server_aggregator": "trimmed_mean"
         }
     ]
 }

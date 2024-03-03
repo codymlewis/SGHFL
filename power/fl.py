@@ -53,7 +53,7 @@ class Server:
     def __init__(self, clients, config, sample_shape):
         self.model = RidgeModel()
         self.model.init_params(sample_shape)
-        match config.get("aggregator"):
+        match config.get("server_aggregator"):
             case "median":
                 self.aggregator = Median()
             case "centre":
@@ -174,7 +174,7 @@ def cosine_similarity(client_parameters: List[NDArray]) -> float:
 
 class MiddleServer:
     def __init__(self, clients, config):
-        match config.get('aggregator'):
+        match config.get('middle_server_aggregator'):
             case "mrcs":
                 self.aggregator = MRCS()
             case "topk_kickback":

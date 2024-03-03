@@ -63,7 +63,10 @@ if __name__ == "__main__":
             fl.MiddleServer(
                 [
                     adversary_type(client_data[r])
-                    if (dc + 1 > math.ceil(len(regions) * (1 - args.pct_dc_adversaries))) and (c + 1 > math.ceil(len(region) * (1 - args.pct_saturation)))
+                    if (
+                        (dc + 1 > math.ceil(len(regions) * (1 - args.pct_dc_adversaries))) and
+                        (c + 1 > math.ceil(len(region) * (1 - args.pct_saturation)))
+                    )
                     else fl.Client(client_data[r])
                     for c, r in enumerate(region)
                 ],
