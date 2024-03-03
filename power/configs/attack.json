@@ -62,26 +62,6 @@
         {
             "attack": "lie",
             "aggregator": "trimmed_mean"
-        },
-        {
-            "attack": "backdoor_lie",
-            "aggregator": "fedavg"
-        },
-        {
-            "attack": "backdoor_lie",
-            "aggregator": "median"
-        },
-        {
-            "attack": "backdoor_lie",
-            "aggregator": "centre"
-        },
-        {
-            "attack": "backdoor_lie",
-            "aggregator": "krum"
-        },
-        {
-            "attack": "backdoor_lie",
-            "aggregator": "trimmed_mean"
         }
     ]
 }

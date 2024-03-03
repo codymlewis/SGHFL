@@ -33,6 +33,7 @@ if __name__ == "__main__":
     parser.add_argument("--pct-saturation", type=float, default=1.0,
                         help="The percentage of clients under adversary middle servers to assign as adversaries.")
     args = parser.parse_args()
+    print(f"Experiment args: {vars(args)}")
 
     start_time = time.time()
     keyword = "performance" if args.performance else "attack" if args.attack else "fairness"
