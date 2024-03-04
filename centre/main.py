@@ -42,10 +42,33 @@ def lloyds(
     return {"centroids": centroids}
 
 
+def find_centre(samples, tol=1e-5):
+    nsamples = len(samples)
+    dists = sp.spatial.distance.cdist(samples, samples)
+    radii = dists / 2
+    midpoints = (samples[None, :] + samples[:, None]) / 2
+    scores = []
+    for i in range(nsamples):
+        mp_dists = sp.spatial.distance.cdist(midpoints[i], x)
+        sphere_dists = mp_dists - radii[i]
+        num_in_sphere = (sphere_dists <= 0).sum(axis=1) >= (nsamples / 2)
+        # score = mp_dists.sum(axis=1)
+        # score = (mp_dists < 0).sum(axis=1)
+        score = np.partition(abs(sphere_dists), nsamples // 2, axis=1)[:, :nsamples // 2].sum(axis=1)
+        scores.append(score - 3 * num_in_sphere)
+    scores = np.array(scores)
+    max_dist_index = np.argmin(scores)
+    centre = midpoints[max_dist_index // nsamples, max_dist_index % nsamples]
+    indices = np.linalg.norm(samples - centre, axis=1) - radii[max_dist_index // nsamples, max_dist_index % nsamples]
+    print(f"c1: {samples[max_dist_index // nsamples]}, c2: {samples[max_dist_index % nsamples]}, centre: {centre}")
+    return samples[indices <= 0].mean(0)
+    return midpoints[max_dist_index // nsamples, max_dist_index % nsamples]
+
+
 if __name__ == "__main__":
     rng = np.random.default_rng(42)
-    npoints = 1000
-    nadversaries = 500
+    npoints = 100
+    nadversaries = 1
     attack = "multi_shifted_random"
 
     honest_x = rng.normal(1, 3, size=(npoints - nadversaries, 2))
@@ -67,22 +90,23 @@ if __name__ == "__main__":
                 rng.normal([[3.5, 3.5], [3.0, 4.0], [4.0, 3.0]][i % 3], np.std(honest_x, 0), 2) for i in range(nadversaries)]
             )
     x = np.concatenate((honest_x, attack_x))
-
-    plt.scatter(honest_x[:, 0], honest_x[:, 1], label="Honest points")
-    plt.scatter(attack_x[:, 0], attack_x[:, 1], label="Attack points")
-    honest_mean = np.mean(honest_x, 0)
-    plt.scatter(honest_mean[0], honest_mean[1], marker="x", label="Honest mean")
-    full_mean = np.mean(x, 0)
-    plt.scatter(full_mean[0], full_mean[1], marker="x", label="Full mean")
-    params = plusplus_init(x, npoints // 2 + 1)
-    params = lloyds(params, x)
-    centroids = params['centroids']
-    plt.scatter(centroids[:, 0], centroids[:, 1], marker="+", label="Centroids")
-    centre_mean = np.mean(centroids, 0)
-    plt.scatter(centre_mean[0], centre_mean[1], marker="x", label="Centre")
-    # plt.legend()
-    # plt.show()
     print(f"{x.mean(0)=}, {x.std(0)=}")
     print(f"{honest_x.mean(0)=}, {honest_x.std(0)=}")
     print(f"{attack_x.mean(0)=}, {attack_x.std(0)=}")
-    print(f"{np.mean(centroids, 0)=}, {centroids.std(0)=}")
+    print(find_centre(x))
+
+    # plt.scatter(honest_x[:, 0], honest_x[:, 1], label="Honest points")
+    # plt.scatter(attack_x[:, 0], attack_x[:, 1], label="Attack points")
+    # honest_mean = np.mean(honest_x, 0)
+    # plt.scatter(honest_mean[0], honest_mean[1], marker="x", label="Honest mean")
+    # full_mean = np.mean(x, 0)
+    # plt.scatter(full_mean[0], full_mean[1], marker="x", label="Full mean")
+    # params = plusplus_init(x, npoints // 2 + 1)
+    # params = lloyds(params, x)
+    # centroids = params['centroids']
+    # plt.scatter(centroids[:, 0], centroids[:, 1], marker="+", label="Centroids")
+    # centre_mean = np.mean(centroids, 0)
+    # plt.scatter(centre_mean[0], centre_mean[1], marker="x", label="Centre")
+    # # plt.legend()
+    # # plt.show()
+    # print(f"{np.mean(centroids, 0)=}, {centroids.std(0)=}")
