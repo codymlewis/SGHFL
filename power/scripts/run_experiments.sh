@@ -13,8 +13,8 @@ for dataset in "apartment" "solar_home"; do
                 for dcadv in $(seq 0 0.1 1); do
                     python main.py -d $dataset -i $i --$experiment_type --pct-saturation 1.0 --pct-dc-adversaries $dcadv
 
-                    if (( $(echo "$dcadv > 0.4" |bc -l) )); then
-                        sat="$((0.5 / $dcadv))"
+                    if (( $(echo "$dcadv > 0.4" | bc -l) )); then
+                        sat="$(echo 0.5 / $dcadv | bc -l)"
                         python main.py -d $dataset -i $i --$experiment_type --pct-saturation $sat --pct-dc-adversaries $dcadv
                     fi
                 done
