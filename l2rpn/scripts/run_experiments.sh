@@ -20,7 +20,7 @@ for attack in "empty" "lie" "ipm"; do
             run_many_seeds "python main.py --attack $attack --server-aggregator $aggregator --pct-saturation 1.0 --pct-adversaries $adv" 10
 
             if (( $(echo "$adv > 0.4" | bc -l) )); then
-                sat="$((0.5  / $adv))"
+                sat="$(echo 0.5  / $adv | bc -l)"
                 run_many_seeds "python main.py --attack $attack --server-aggregator $aggregator --pct-saturation $sat --pct-adversaries $adv" 10
             fi
         done
