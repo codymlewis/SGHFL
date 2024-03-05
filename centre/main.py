@@ -42,34 +42,40 @@ def lloyds(
     return {"centroids": centroids}
 
 
-def find_centre(samples, tol=1e-5):
+def find_centre(samples):
     nsamples = len(samples)
+    sigma = np.std(samples, axis=1)
     dists = sp.spatial.distance.cdist(samples, samples)
-    radii = dists / 2
-    midpoints = (samples[None, :] + samples[:, None]) / 2
-    scores = []
-    for i in range(nsamples):
-        mp_dists = sp.spatial.distance.cdist(midpoints[i], x)
-        sphere_dists = mp_dists - radii[i]
-        num_in_sphere = (sphere_dists <= 0).sum(axis=1) >= (nsamples / 2)
-        # score = mp_dists.sum(axis=1)
-        # score = (mp_dists < 0).sum(axis=1)
-        score = np.partition(abs(sphere_dists), nsamples // 2, axis=1)[:, :nsamples // 2].sum(axis=1)
-        scores.append(score - 3 * num_in_sphere)
-    scores = np.array(scores)
-    max_dist_index = np.argmin(scores)
-    centre = midpoints[max_dist_index // nsamples, max_dist_index % nsamples]
-    indices = np.linalg.norm(samples - centre, axis=1) - radii[max_dist_index // nsamples, max_dist_index % nsamples]
-    print(f"c1: {samples[max_dist_index // nsamples]}, c2: {samples[max_dist_index % nsamples]}, centre: {centre}")
-    return samples[indices <= 0].mean(0)
-    return midpoints[max_dist_index // nsamples, max_dist_index % nsamples]
+    max_dist_index = np.argmax(dists)
+    centre = samples[max_dist_index // nsamples, max_dist_index % nsamples]
+    radius = sigma * 3
+    # - Slide sphere until it contains the most points
+    return centre
+    # radii = dists / 2
+    # midpoints = (samples[None, :] + samples[:, None]) / 2
+    # scores = []
+    # for i in range(nsamples):
+    #     mp_dists = sp.spatial.distance.cdist(midpoints[i], x)
+    #     sphere_dists = mp_dists - radii[i]
+    #     # num_in_sphere = (sphere_dists <= 0).sum(axis=1) >= (nsamples / 2)
+    #     # score = mp_dists.sum(axis=1)
+    #     # score = (mp_dists < 0).sum(axis=1)
+    #     score = np.partition(abs(sphere_dists), nsamples // 2, axis=1)[:, :nsamples // 2].sum(axis=1)
+    #     scores.append(score)
+    # scores = np.array(scores)
+    # max_dist_index = np.argmin(scores)
+    # centre = midpoints[max_dist_index // nsamples, max_dist_index % nsamples]
+    # indices = np.linalg.norm(samples - centre, axis=1) - radii[max_dist_index // nsamples, max_dist_index % nsamples]
+    # print(f"c1: {samples[max_dist_index // nsamples]}, c2: {samples[max_dist_index % nsamples]}, centre: {centre}")
+    # return samples[indices <= 0].mean(0)
+    # return midpoints[max_dist_index // nsamples, max_dist_index % nsamples]
 
 
 if __name__ == "__main__":
     rng = np.random.default_rng(42)
-    npoints = 100
+    npoints = 1000
     nadversaries = 1
-    attack = "multi_shifted_random"
+    attack = "lie"
 
     honest_x = rng.normal(1, 3, size=(npoints - nadversaries, 2))
     match attack:
