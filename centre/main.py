@@ -2,6 +2,7 @@ from typing import Dict, Tuple
 import numpy as np
 import numpy.typing as npt
 import matplotlib.pyplot as plt
+import sklearn.cluster as skc
 import scipy as sp
 
 
@@ -42,40 +43,30 @@ def lloyds(
     return {"centroids": centroids}
 
 
-def find_centre(samples):
+def find_centre(samples: npt.NDArray) -> npt.NDArray:
     nsamples = len(samples)
-    sigma = np.std(samples, axis=1)
     dists = sp.spatial.distance.cdist(samples, samples)
-    max_dist_index = np.argmax(dists)
-    centre = samples[max_dist_index // nsamples, max_dist_index % nsamples]
-    radius = sigma * 3
-    # - Slide sphere until it contains the most points
+    threshold = np.max(dists) / np.sqrt(nsamples)
+    dists += np.eye(nsamples) * threshold
+    # Space sampling
+    space_samples = samples[np.all(dists >= threshold, axis=1)]
+    samples_from, samples_to = np.where(dists < threshold)
+    overlapping_samples = np.unique(samples_from)
+    for s in np.unique(samples_from):
+        if s in overlapping_samples:
+            overlapping_samples = np.setdiff1d(overlapping_samples, samples_from[samples_to == s])
+    space_samples = np.concatenate((space_samples, samples[overlapping_samples]))
+    clusters = skc.HDBSCAN().fit_predict(space_samples)
+    honest_cluster = np.argmax(np.bincount(clusters[clusters != -1]))
+    centre = space_samples[clusters == honest_cluster].mean(0)
     return centre
-    # radii = dists / 2
-    # midpoints = (samples[None, :] + samples[:, None]) / 2
-    # scores = []
-    # for i in range(nsamples):
-    #     mp_dists = sp.spatial.distance.cdist(midpoints[i], x)
-    #     sphere_dists = mp_dists - radii[i]
-    #     # num_in_sphere = (sphere_dists <= 0).sum(axis=1) >= (nsamples / 2)
-    #     # score = mp_dists.sum(axis=1)
-    #     # score = (mp_dists < 0).sum(axis=1)
-    #     score = np.partition(abs(sphere_dists), nsamples // 2, axis=1)[:, :nsamples // 2].sum(axis=1)
-    #     scores.append(score)
-    # scores = np.array(scores)
-    # max_dist_index = np.argmin(scores)
-    # centre = midpoints[max_dist_index // nsamples, max_dist_index % nsamples]
-    # indices = np.linalg.norm(samples - centre, axis=1) - radii[max_dist_index // nsamples, max_dist_index % nsamples]
-    # print(f"c1: {samples[max_dist_index // nsamples]}, c2: {samples[max_dist_index % nsamples]}, centre: {centre}")
-    # return samples[indices <= 0].mean(0)
-    # return midpoints[max_dist_index // nsamples, max_dist_index % nsamples]
 
 
 if __name__ == "__main__":
     rng = np.random.default_rng(42)
     npoints = 1000
-    nadversaries = 1
-    attack = "lie"
+    nadversaries = 499
+    attack = "shifted_random"
 
     honest_x = rng.normal(1, 3, size=(npoints - nadversaries, 2))
     match attack:
@@ -86,7 +77,7 @@ if __name__ == "__main__":
         case "model_replacement":
             attack_x = rng.normal(3.5, 0.25, (nadversaries, 2)) * (npoints // 2 + 1)
         case "shifted_random":
-            attack_x = rng.normal(3.5, np.std(honest_x, 0), (nadversaries, 2))
+            attack_x = rng.normal(5, np.std(honest_x, 0), (nadversaries, 2))
         case "closest_points":
             target = np.array([3.5, 3.5])
             dists = np.sqrt(np.sum(abs(honest_x - target)**2, axis=1))
@@ -101,18 +92,30 @@ if __name__ == "__main__":
     print(f"{attack_x.mean(0)=}, {attack_x.std(0)=}")
     print(find_centre(x))
 
-    # plt.scatter(honest_x[:, 0], honest_x[:, 1], label="Honest points")
-    # plt.scatter(attack_x[:, 0], attack_x[:, 1], label="Attack points")
-    # honest_mean = np.mean(honest_x, 0)
-    # plt.scatter(honest_mean[0], honest_mean[1], marker="x", label="Honest mean")
-    # full_mean = np.mean(x, 0)
-    # plt.scatter(full_mean[0], full_mean[1], marker="x", label="Full mean")
-    # params = plusplus_init(x, npoints // 2 + 1)
-    # params = lloyds(params, x)
-    # centroids = params['centroids']
-    # plt.scatter(centroids[:, 0], centroids[:, 1], marker="+", label="Centroids")
-    # centre_mean = np.mean(centroids, 0)
-    # plt.scatter(centre_mean[0], centre_mean[1], marker="x", label="Centre")
-    # # plt.legend()
-    # # plt.show()
-    # print(f"{np.mean(centroids, 0)=}, {centroids.std(0)=}")
+    plt.scatter(honest_x[:, 0], honest_x[:, 1], label="Honest points")
+    plt.scatter(attack_x[:, 0], attack_x[:, 1], label="Attack points")
+    honest_mean = np.mean(honest_x, 0)
+    plt.scatter(honest_mean[0], honest_mean[1], marker="x", label="Honest mean")
+    full_mean = np.mean(x, 0)
+    plt.scatter(full_mean[0], full_mean[1], marker="x", label="Full mean")
+    centre = find_centre(x)
+    plt.scatter(centre[0], centre[1], marker="x", label="Centre")
+
+    samples = x
+    nsamples = len(samples)
+    dists = sp.spatial.distance.cdist(samples, samples)
+    threshold = np.max(dists) / np.sqrt(nsamples)
+    print(f"{threshold=}")
+    dists += np.eye(nsamples) * threshold
+    # Space sampling
+    space_samples = samples[np.all(dists >= threshold, axis=1)]
+    samples_from, samples_to = np.where(dists < threshold)
+    overlapping_samples = np.unique(samples_from)
+    for s in np.unique(samples_from):
+        if s in overlapping_samples:
+            overlapping_samples = np.setdiff1d(overlapping_samples, samples_from[samples_to == s])
+    space_samples = np.concatenate((space_samples, samples[overlapping_samples]))
+    plt.scatter(space_samples[:, 0], space_samples[:, 1], marker="+", label="Space samples")
+
+    plt.legend()
+    plt.show()
