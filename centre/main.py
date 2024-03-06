@@ -56,16 +56,23 @@ def find_centre(samples: npt.NDArray) -> npt.NDArray:
         if s in overlapping_samples:
             overlapping_samples = np.setdiff1d(overlapping_samples, samples_from[samples_to == s])
     space_samples = np.concatenate((space_samples, samples[overlapping_samples]))
-    clusters = skc.HDBSCAN().fit_predict(space_samples)
-    honest_cluster = np.argmax(np.bincount(clusters[clusters != -1]))
-    centre = space_samples[clusters == honest_cluster].mean(0)
-    return centre
+    # return space_samples.mean(0)
+
+    # Try sphere sliding
+    max_dist_idx = np.unravel_index(np.argmax(dists), dists.shape)
+    radius = 3 * np.std(space_samples) / 2
+
+    # Try largest cluster
+    # clusters = skc.HDBSCAN().fit_predict(space_samples)
+    # honest_cluster = np.argmax(np.bincount(clusters[clusters != -1]))
+    # centre = space_samples[clusters == honest_cluster].mean(0)
+    # return centre
 
 
 if __name__ == "__main__":
     rng = np.random.default_rng(42)
     npoints = 1000
-    nadversaries = 499
+    nadversaries = 200
     attack = "shifted_random"
 
     honest_x = rng.normal(1, 3, size=(npoints - nadversaries, 2))
