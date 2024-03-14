@@ -44,29 +44,36 @@ def lloyds(
 
 
 def find_centre(samples: npt.NDArray) -> npt.NDArray:
+    clusters = skc.HDBSCAN().fit_predict(samples)
+    # Remove outliers
+    samples = samples[clusters != -1]
+    clusters = clusters[clusters != -1]
     nsamples = len(samples)
+
     dists = sp.spatial.distance.cdist(samples, samples)
-    threshold = np.max(dists) / np.sqrt(nsamples)
-    dists += np.eye(nsamples) * threshold
-    # Space sampling
-    space_samples = samples[np.all(dists >= threshold, axis=1)]
-    samples_from, samples_to = np.where(dists < threshold)
-    overlapping_samples = np.unique(samples_from)
-    for s in np.unique(samples_from):
-        if s in overlapping_samples:
-            overlapping_samples = np.setdiff1d(overlapping_samples, samples_from[samples_to == s])
-    space_samples = np.concatenate((space_samples, samples[overlapping_samples]))
-    # return space_samples.mean(0)
-
-    # Try sphere sliding
     max_dist_idx = np.unravel_index(np.argmax(dists), dists.shape)
-    radius = 3 * np.std(space_samples) / 2
-
-    # Try largest cluster
-    # clusters = skc.HDBSCAN().fit_predict(space_samples)
-    # honest_cluster = np.argmax(np.bincount(clusters[clusters != -1]))
-    # centre = space_samples[clusters == honest_cluster].mean(0)
-    # return centre
+    radius = np.max(dists) / 3
+    point_A = samples[max_dist_idx[0]]
+    point_B = samples[max_dist_idx[1]]
+    sphere_mp_A = point_A + (1/3) * np.where(point_B > point_A, 1, -1) * abs(point_A - point_B)
+    samples_in_sphere_A = np.linalg.norm(samples - sphere_mp_A, axis=1) < radius
+    sphere_mp_B = point_B + (1/3) * np.where(point_A > point_B, 1, -1) * abs(point_A - point_B)
+    samples_in_sphere_B = np.linalg.norm(samples - sphere_mp_B, axis=1) < radius
+    scores = np.zeros(nsamples)
+    dists = dists + np.eye(nsamples) * np.mean(dists)
+    for i in range(nsamples):
+        use_j = samples_in_sphere_A if samples_in_sphere_A[i] else samples_in_sphere_B
+        # use_j = use_j * np.all(dists > 0.1 * np.mean(dists), axis=1)
+        scores[i] = sum(dists[i] * use_j)
+    print(f"{scores=}")
+    chosen_samples = samples[np.argpartition(-scores, nsamples // 2)[:nsamples // 2]]
+    plt.scatter(chosen_samples[:, 0], chosen_samples[:, 1], label="Chosen points")
+    return sp.optimize.minimize(
+        lambda x: np.sum(np.linalg.norm(chosen_samples - x, axis=1)),
+        x0=np.mean(chosen_samples, axis=0)
+    ).x
+    # return np.prod(chosen_samples, axis=0)**(1 / len(chosen_samples))
+    # return np.mean(samples[np.argpartition(-scores, nsamples // 2)[:nsamples // 2]], axis=0)
 
 
 if __name__ == "__main__":
@@ -97,7 +104,6 @@ if __name__ == "__main__":
     print(f"{x.mean(0)=}, {x.std(0)=}")
     print(f"{honest_x.mean(0)=}, {honest_x.std(0)=}")
     print(f"{attack_x.mean(0)=}, {attack_x.std(0)=}")
-    print(find_centre(x))
 
     plt.scatter(honest_x[:, 0], honest_x[:, 1], label="Honest points")
     plt.scatter(attack_x[:, 0], attack_x[:, 1], label="Attack points")
@@ -106,23 +112,8 @@ if __name__ == "__main__":
     full_mean = np.mean(x, 0)
     plt.scatter(full_mean[0], full_mean[1], marker="x", label="Full mean")
     centre = find_centre(x)
+    print(f"Centre: {centre}")
     plt.scatter(centre[0], centre[1], marker="x", label="Centre")
-
-    samples = x
-    nsamples = len(samples)
-    dists = sp.spatial.distance.cdist(samples, samples)
-    threshold = np.max(dists) / np.sqrt(nsamples)
-    print(f"{threshold=}")
-    dists += np.eye(nsamples) * threshold
-    # Space sampling
-    space_samples = samples[np.all(dists >= threshold, axis=1)]
-    samples_from, samples_to = np.where(dists < threshold)
-    overlapping_samples = np.unique(samples_from)
-    for s in np.unique(samples_from):
-        if s in overlapping_samples:
-            overlapping_samples = np.setdiff1d(overlapping_samples, samples_from[samples_to == s])
-    space_samples = np.concatenate((space_samples, samples[overlapping_samples]))
-    plt.scatter(space_samples[:, 0], space_samples[:, 1], marker="+", label="Space samples")
 
     plt.legend()
     plt.show()
