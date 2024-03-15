@@ -63,9 +63,9 @@ def find_centre(samples: npt.NDArray) -> npt.NDArray:
     dists = dists + np.eye(nsamples) * np.mean(dists)
     for i in range(nsamples):
         use_j = samples_in_sphere_A if samples_in_sphere_A[i] else samples_in_sphere_B
-        # use_j = use_j * np.all(dists > 0.1 * np.mean(dists), axis=1)
-        scores[i] = sum(dists[i] * use_j)
-    print(f"{scores=}")
+        use_j = use_j * np.all(dists > 0.1 * np.mean(dists), axis=1)
+        scores[i] = sum((1 / (dists[i] + 1)) * use_j)
+    # print(f"{scores=}")
     chosen_samples = samples[np.argpartition(-scores, nsamples // 2)[:nsamples // 2]]
     plt.scatter(chosen_samples[:, 0], chosen_samples[:, 1], label="Chosen points")
     return sp.optimize.minimize(
