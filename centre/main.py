@@ -25,7 +25,7 @@ def plusplus_init(samples: npt.NDArray, k: int = 8, seed: int = 0) -> Dict[str, 
 
 def lloyds(
     params: Dict[str, npt.NDArray], samples: npt.NDArray, num_iterations: int = 300, tol=1e-4
-) -> Tuple[npt.NDArray, Dict[str, npt.NDArray]]:
+) -> Dict[str, npt.NDArray]:
     "Lloyd's algorithm for cluster finding from https://ieeexplore.ieee.org/document/1056489"
     centroids = params['centroids']
 
@@ -43,43 +43,45 @@ def lloyds(
     return {"centroids": centroids}
 
 
-def find_centre(samples: npt.NDArray) -> npt.NDArray:
-    clusters = skc.HDBSCAN().fit_predict(samples)
-    # Remove outliers
-    samples = samples[clusters != -1]
-    clusters = clusters[clusters != -1]
-    nsamples = len(samples)
-
+def find_topomean(samples: npt.NDArray, threshold: float = 0.1, tol: float = 0.2) -> npt.NDArray:
     dists = sp.spatial.distance.cdist(samples, samples)
-    max_dist_idx = np.unravel_index(np.argmax(dists), dists.shape)
-    radius = np.max(dists) / 3
-    point_A = samples[max_dist_idx[0]]
-    point_B = samples[max_dist_idx[1]]
-    sphere_mp_A = point_A + (1/3) * np.where(point_B > point_A, 1, -1) * abs(point_A - point_B)
-    samples_in_sphere_A = np.linalg.norm(samples - sphere_mp_A, axis=1) < radius
-    sphere_mp_B = point_B + (1/3) * np.where(point_A > point_B, 1, -1) * abs(point_A - point_B)
-    samples_in_sphere_B = np.linalg.norm(samples - sphere_mp_B, axis=1) < radius
-    scores = np.zeros(nsamples)
-    dists = dists + np.eye(nsamples) * np.mean(dists)
-    for i in range(nsamples):
-        use_j = samples_in_sphere_A if samples_in_sphere_A[i] else samples_in_sphere_B
-        use_j = use_j * np.all(dists > 0.1 * np.mean(dists), axis=1)
-        scores[i] = sum((1 / (dists[i] + 1)) * use_j)
-    # print(f"{scores=}")
-    chosen_samples = samples[np.argpartition(-scores, nsamples // 2)[:nsamples // 2]]
-    plt.scatter(chosen_samples[:, 0], chosen_samples[:, 1], label="Chosen points")
-    return sp.optimize.minimize(
-        lambda x: np.sum(np.linalg.norm(chosen_samples - x, axis=1)),
-        x0=np.mean(chosen_samples, axis=0)
-    ).x
-    # return np.prod(chosen_samples, axis=0)**(1 / len(chosen_samples))
-    # return np.mean(samples[np.argpartition(-scores, nsamples // 2)[:nsamples // 2]], axis=0)
+    radius = np.std(samples) * threshold
+    scores = np.sum(dists <= radius, axis=1)
+    sorted_score_idx = np.argsort(-scores)
+    sphere_scores = []
+    sphere_neighbourhoods = []
+    sphere_centres = []
+    while len(sorted_score_idx):
+        i = sorted_score_idx[0]
+        neighbourhood = np.argwhere(dists[i] <= radius).reshape(-1)
+        sphere_scores.append(scores[i])
+        sphere_neighbourhoods.append(neighbourhood)
+        sphere_centres.append(samples[neighbourhood].mean(0))
+        sorted_score_idx = np.setdiff1d(sorted_score_idx, neighbourhood)
+    sphere_scores = np.array(sphere_scores)
+    print(f"{sphere_scores=}")
+    maxes = (np.max(sphere_scores) - sphere_scores) < tol * np.max(sphere_scores)
+    # if np.sum(maxes) <= 1:
+    #     return samples[sphere_neighbourhoods[np.argmax(sphere_scores)]].mean(0)
+    # Further analysis
+    # Maybe a bottom up approach?
+    print(np.sum(maxes))
+    max_idx = np.argwhere(maxes).reshape(-1)
+    for i in max_idx:
+        smaller_idx = np.argwhere(sphere_scores[i] >= sphere_scores).reshape(-1)
+        for j in smaller_idx:
+            print(i, j)
+            print(f"{sphere_neighbourhoods[i]=}, {sphere_neighbourhoods[j]=}")
+            if len(np.intersect1d(sphere_neighbourhoods[i], sphere_neighbourhoods[j])):
+                print("here")
+    secondary_scores = np.sum(dists[max_idx] <= 3 * np.std(samples), axis=1)
+    return sphere_centres[np.argmax(secondary_scores)]
 
 
 if __name__ == "__main__":
-    rng = np.random.default_rng(42)
-    npoints = 1000
-    nadversaries = 200
+    rng = np.random.default_rng(32)
+    npoints = 10000
+    nadversaries = 3000
     attack = "shifted_random"
 
     honest_x = rng.normal(1, 3, size=(npoints - nadversaries, 2))
@@ -91,7 +93,7 @@ if __name__ == "__main__":
         case "model_replacement":
             attack_x = rng.normal(3.5, 0.25, (nadversaries, 2)) * (npoints // 2 + 1)
         case "shifted_random":
-            attack_x = rng.normal(5, np.std(honest_x, 0), (nadversaries, 2))
+            attack_x = rng.normal(6, np.std(honest_x, 0), (nadversaries, 2))
         case "closest_points":
             target = np.array([3.5, 3.5])
             dists = np.sqrt(np.sum(abs(honest_x - target)**2, axis=1))
@@ -111,9 +113,9 @@ if __name__ == "__main__":
     plt.scatter(honest_mean[0], honest_mean[1], marker="x", label="Honest mean")
     full_mean = np.mean(x, 0)
     plt.scatter(full_mean[0], full_mean[1], marker="x", label="Full mean")
-    centre = find_centre(x)
-    print(f"Centre: {centre}")
-    plt.scatter(centre[0], centre[1], marker="x", label="Centre")
+    topomean = find_topomean(x)
+    print(f"Topographic mean: {topomean}")
+    plt.scatter(topomean[0], topomean[1], marker="x", label="Topomean")
 
     plt.legend()
     plt.show()
