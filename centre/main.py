@@ -5,6 +5,12 @@ import scipy as sp
 
 
 def find_topomean(samples: npt.NDArray, threshold: float = 0.1, tol: float = 0.2) -> npt.NDArray:
+    """
+    Assumptions:
+    - Attacking clients are in the minority
+    - Updates are i.i.d.
+    - Updates follow a normal distribution
+    """
     # Eliminate samples that are too close to eachother, leaving only one representative
     for i, sample in enumerate(samples):
         samples = samples[(np.linalg.norm(samples - sample, axis=1) > 0.01) | (np.arange(len(samples)) == i)]
