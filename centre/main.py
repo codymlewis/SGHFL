@@ -5,11 +5,13 @@ import scipy as sp
 
 
 def find_topomean(samples: npt.NDArray, threshold: float = 0.1, tol: float = 0.2) -> npt.NDArray:
+    # Eliminate samples that are too close to eachother, leaving only one representative
     for i, sample in enumerate(samples):
         samples = samples[(np.linalg.norm(samples - sample, axis=1) > 0.01) | (np.arange(len(samples)) == i)]
     dists = sp.spatial.distance.cdist(samples, samples)
     radius = np.std(samples) * threshold
     scores = np.sum(dists <= radius, axis=1)
+    # Find all neighbourhoods, aggregate each into a mean point, and assign largest score
     sorted_score_idx = np.argsort(-scores)
     sphere_scores = []
     sphere_centres = []
@@ -19,6 +21,7 @@ def find_topomean(samples: npt.NDArray, threshold: float = 0.1, tol: float = 0.2
         sphere_scores.append(scores[i])
         sphere_centres.append(samples[neighbourhood].mean(0))
         sorted_score_idx = np.setdiff1d(sorted_score_idx, neighbourhood)
+    # Select 1/3 of the densest spheres, and scale density score according to distance to selected spheres
     sphere_scores = np.array(sphere_scores)
     sphere_centres = np.array(sphere_centres)
     sorted_ssi = np.argpartition(-sphere_scores, len(sphere_scores) // 3)[:len(sphere_scores) // 3]
@@ -27,13 +30,9 @@ def find_topomean(samples: npt.NDArray, threshold: float = 0.1, tol: float = 0.2
     centre_dists = sp.spatial.distance.cdist(sphere_centres, sphere_centres)
     ts = centre_dists / np.std(samples)
     overlap = 1 - (sp.stats.norm.cdf(ts) - sp.stats.norm.cdf(-ts))
+    # Use scaled density score to weight the average of the sphere centres
     p = overlap[np.argmax(overlap.sum(1))]
-    p = p / p.sum()
-    p = p * sphere_scores
-    # return sp.optimize.minimize(
-    #     lambda x: np.sum((p * np.linalg.norm(x - sphere_centres, axis=1).T).T / p.sum()),
-    #     x0=sphere_centres.mean(0)
-    # ).x
+    p = (p / p.sum()) * sphere_scores
     return np.sum((p * sphere_centres.T).T / p.sum(), axis=0)
 
 
@@ -50,7 +49,7 @@ if __name__ == "__main__":
             zmax = sp.stats.norm.ppf((npoints - s) / npoints)
             attack_x = np.tile(np.mean(honest_x, 0) + zmax * np.std(honest_x, 0), (nadversaries, 1))
         case "shifted_random":
-            attack_x = rng.normal(9, np.std(honest_x, 0), (nadversaries, 2))
+            attack_x = rng.normal(6, np.std(honest_x, 0), (nadversaries, 2))
     x = np.concatenate((honest_x, attack_x))
     print(f"{x.mean(0)=}, {x.std(0)=}")
     print(f"{honest_x.mean(0)=}, {honest_x.std(0)=}")
@@ -67,4 +66,4 @@ if __name__ == "__main__":
     plt.scatter(topomean[0], topomean[1], marker="x", label="Topomean")
 
     plt.legend()
-    plt.show()
+    # plt.show()
