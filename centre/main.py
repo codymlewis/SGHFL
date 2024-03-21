@@ -14,40 +14,29 @@ def find_topomean(samples: npt.NDArray, e1: float = 0.01, e2: float = 0.1) -> np
     """
     # Eliminate samples that are too close to eachother, leaving only one representative
     dists = sp.spatial.distance.cdist(samples, samples)
-    samples = samples[np.all((dists + (np.eye(len(samples)) * e1 + 1)) > e1, axis=0)]
+    samples = samples[np.all((dists + (np.eye(len(samples)) * e1 + 1)) > e1, axis=0)]  # Fixme
     dists = sp.spatial.distance.cdist(samples, samples)
     radius = np.std(samples) * e2
     scores = np.sum(dists <= radius, axis=1)
-    # Find all neighbourhoods, aggregate each into a mean point, and assign points to the largest scoring one
-    sorted_score_idx = np.argsort(-scores)
-    sphere_scores = []
-    sphere_centres = []
-    while len(sorted_score_idx):
-        i = sorted_score_idx[0]
-        neighbourhood = np.argwhere(dists[i] <= radius).reshape(-1)
-        sphere_scores.append(scores[i])
-        sphere_centres.append(samples[neighbourhood].mean(0))
-        sorted_score_idx = np.setdiff1d(sorted_score_idx, neighbourhood)
-    # Select a fraction of the densest spheres, and scale density score according to overlap with selected spheres
-    sphere_scores = np.array(sphere_scores)
-    sphere_centres = np.array(sphere_centres)
-    sorted_ssi = np.argpartition(-sphere_scores, len(sphere_scores) // 20)[:len(sphere_scores) // 20]
-    sphere_scores = sphere_scores[sorted_ssi]
-    sphere_centres = sphere_centres[sorted_ssi]
+    # Take only the highest scoring neighbourhoods
+    sphere_idx = np.argpartition(-scores, len(scores) // 3)[:len(scores) // 3]
+    sphere_scores = scores[sphere_idx]
+    sphere_centres = np.array([samples[dists[i] <= radius].mean(0) for i in sphere_idx])
+    # Scale scores according to overlap
     centre_dists = sp.spatial.distance.cdist(sphere_centres, sphere_centres)
     ts = centre_dists / np.std(samples)
     overlap = 1 - (sp.stats.norm.cdf(ts) - sp.stats.norm.cdf(-ts))
     # Use scaled density score to weight the average of the sphere centres
     p = overlap[np.argmax(overlap.sum(1))]
     p = (p / p.sum()) * sphere_scores
-    return np.sum((p * sphere_centres.T).T / p.sum(), axis=0)
+    return np.average(sphere_centres, weights=p / p.sum(), axis=0)
 
 
 if __name__ == "__main__":
-    rng = np.random.default_rng(1072)
+    rng = np.random.default_rng(14052)
     npoints = 10000
     nadversaries = 4000
-    attack = "shifted_random"
+    attack = "lie"
 
     honest_x = rng.normal(1, 3, size=(npoints - nadversaries, 2))
     match attack:
