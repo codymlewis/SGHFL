@@ -1,10 +1,11 @@
+import functools
 import numpy as np
 import numpy.typing as npt
 import matplotlib.pyplot as plt
 import scipy as sp
 
 
-def find_topomean(samples: npt.NDArray, threshold: float = 0.1, tol: float = 0.2) -> npt.NDArray:
+def find_topomean(samples: npt.NDArray, e1: float = 0.01, e2: float = 0.1) -> npt.NDArray:
     """
     Assumptions:
     - Attacking clients are in the minority
@@ -12,12 +13,12 @@ def find_topomean(samples: npt.NDArray, threshold: float = 0.1, tol: float = 0.2
     - Updates follow a normal distribution
     """
     # Eliminate samples that are too close to eachother, leaving only one representative
-    for i, sample in enumerate(samples):
-        samples = samples[(np.linalg.norm(samples - sample, axis=1) > 0.01) | (np.arange(len(samples)) == i)]
     dists = sp.spatial.distance.cdist(samples, samples)
-    radius = np.std(samples) * threshold
+    samples = samples[np.all((dists + (np.eye(len(samples)) * e1 + 1)) > e1, axis=0)]
+    dists = sp.spatial.distance.cdist(samples, samples)
+    radius = np.std(samples) * e2
     scores = np.sum(dists <= radius, axis=1)
-    # Find all neighbourhoods, aggregate each into a mean point, and assign largest score
+    # Find all neighbourhoods, aggregate each into a mean point, and assign points to the largest scoring one
     sorted_score_idx = np.argsort(-scores)
     sphere_scores = []
     sphere_centres = []
@@ -27,10 +28,10 @@ def find_topomean(samples: npt.NDArray, threshold: float = 0.1, tol: float = 0.2
         sphere_scores.append(scores[i])
         sphere_centres.append(samples[neighbourhood].mean(0))
         sorted_score_idx = np.setdiff1d(sorted_score_idx, neighbourhood)
-    # Select 1/3 of the densest spheres, and scale density score according to distance to selected spheres
+    # Select a fraction of the densest spheres, and scale density score according to overlap with selected spheres
     sphere_scores = np.array(sphere_scores)
     sphere_centres = np.array(sphere_centres)
-    sorted_ssi = np.argpartition(-sphere_scores, len(sphere_scores) // 3)[:len(sphere_scores) // 3]
+    sorted_ssi = np.argpartition(-sphere_scores, len(sphere_scores) // 20)[:len(sphere_scores) // 20]
     sphere_scores = sphere_scores[sorted_ssi]
     sphere_centres = sphere_centres[sorted_ssi]
     centre_dists = sp.spatial.distance.cdist(sphere_centres, sphere_centres)
@@ -43,9 +44,9 @@ def find_topomean(samples: npt.NDArray, threshold: float = 0.1, tol: float = 0.2
 
 
 if __name__ == "__main__":
-    rng = np.random.default_rng(72)
+    rng = np.random.default_rng(1072)
     npoints = 10000
-    nadversaries = 3000
+    nadversaries = 4000
     attack = "shifted_random"
 
     honest_x = rng.normal(1, 3, size=(npoints - nadversaries, 2))
