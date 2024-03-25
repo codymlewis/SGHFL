@@ -47,8 +47,7 @@ def topomean(
         ts = centre_dists / np.std(samples)
         non_overlap = 1 - sp.stats.norm.cdf(ts)
         # Use scaled density score to weight the average of the sphere centres
-        p = non_overlap[np.argmax(non_overlap.sum(1))]
-        p = (p / p.sum()) * sphere_scores
+        p = non_overlap[np.argmax(non_overlap.sum(1))] * sphere_scores
     else:
         p = np.ones(len(sphere_centres))
     return np.average(sphere_centres, weights=p / p.sum(), axis=0)
