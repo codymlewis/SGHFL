@@ -13,7 +13,6 @@ if __name__ == "__main__":
     parser.add_argument('-r', '--repetitions', type=int, default=1000,
                         help="Number of times to repeat the experiment")
     parser.add_argument('-n', '--npoints', type=int, default=1000, help="Number of points to evaluate for.")
-    parser.add_argument('-d', '--dimensions', type=int, default=2, help="Number of dimensions for the points")
     parser.add_argument('-p', '--padversaries', type=float, default=0.4,
                         help="Proportion of points to assign as adversarial.")
     parser.add_argument("-g", "--aggregator", type=str, default="topomean", help="Aggregation algorithm to use.")
@@ -23,12 +22,13 @@ if __name__ == "__main__":
     start_time = time.time()
     rng = np.random.default_rng(args.seed)
     nadversaries = round(args.npoints * args.padversaries)
+    dimensions = 2
 
     errors = np.zeros(args.repetitions)
     improvements = np.zeros(args.repetitions)
     for r in (pbar := trange(args.repetitions)):
-        honest_x = rng.normal(1, 3, size=(args.npoints - nadversaries, args.dimensions))
-        attack_x = rng.normal(6, np.std(honest_x, 0), (nadversaries, args.dimensions))
+        honest_x = rng.normal(1, 3, size=(args.npoints - nadversaries, dimensions))
+        attack_x = rng.normal(6, np.std(honest_x, 0), (nadversaries, dimensions))
         x = np.concatenate((honest_x, attack_x))
         agg_mean = getattr(aggregators, args.aggregator)(x)
         honest_mean = honest_x.mean(0)
