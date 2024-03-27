@@ -13,3 +13,4 @@ agent/
 tags
 Session.vim
 poetry.lock
+plots/

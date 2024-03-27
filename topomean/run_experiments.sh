@@ -44,7 +44,7 @@ done
 
 # Then we conclude by comparing topomean to other aggregation rules
 for aggregator in "mean" "median" "geomedian" "krum" "trmean" "phocas" "topomean"; do
-  for padversaries in $(seq 0.1 0.1 0.5); do
+  for padversaries in $(seq 0.1 0.05 0.5); do
     python comparison.py --aggregator "$aggregator" --padversaries "$padversaries"
   done
 done
