@@ -22,14 +22,16 @@ def topomean(
     e1 = 0.01
     e2 = 1.0
     K = 3
+    sigma = np.std(samples)
     # Eliminate samples that are too close to eachother, leaving only one representative
     dists = sp.spatial.distance.cdist(samples, samples)
     if eliminate_close:
-        far_enough_idx = np.all((dists + (np.eye(len(samples)) * e1)) >= e1, axis=0)
+        far_enough_idx = np.all((dists + (np.eye(len(samples)) * e1 * sigma)) >= (e1 * sigma), axis=0)
         samples = samples[far_enough_idx]
         dists = dists[np.ix_(far_enough_idx, far_enough_idx)]
     # Find and take only the highest scoring neighbourhoods
-    radius = np.std(samples) * e2
+    sigma = np.std(samples)
+    radius = sigma * e2
     if take_dense_spheres:
         neighbourhoods = dists <= radius
         scores = np.sum(neighbourhoods, axis=1)
@@ -44,7 +46,7 @@ def topomean(
     # Scale scores according to expected proportion of unique points the sphere would contain
     if scale_by_overlap:
         centre_dists = sp.spatial.distance.cdist(sphere_centres, sphere_centres)
-        ts = centre_dists / np.std(samples)
+        ts = centre_dists / sigma
         non_overlap = 1 - sp.stats.norm.cdf(ts)
         # Use scaled density score to weight the average of the sphere centres
         p = non_overlap[np.argmax(non_overlap.sum(1))] * sphere_scores
@@ -64,15 +66,15 @@ if __name__ == "__main__":
     parser.add_argument("--eliminate-close", action="store_true")
     parser.add_argument("--take-dense-spheres", action="store_true")
     parser.add_argument("--scale-by-overlap", action="store_true")
+    parser.add_argument("--padversaries", type=float, default=0.4, help="Proportion of adversaries.")
     args = parser.parse_args()
     print(f"Experiment args: {vars(args)}")
     npoints = 1000
     dimensions = 2
-    padversaries = 0.4
 
     start_time = time.time()
     rng = np.random.default_rng(args.seed)
-    nadversaries = round(npoints * padversaries)
+    nadversaries = round(npoints * args.padversaries)
 
     errors = np.zeros(args.repetitions)
     improvements = np.zeros(args.repetitions)

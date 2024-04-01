@@ -32,13 +32,15 @@ for K in $(seq 2 10); do
   for dimensions in $(seq 2 10); do
     python sensitivity.py --K "$K" --dimensions "$dimensions"
   done
-done
+# done
 
 
 # Then we ablate the overall algorithm
 for attack in "lie" "shifted_random"; do
   for flags in {'','--eliminate-close'}' '{'','--take-dense-spheres'}' '{'','--scale-by-overlap'}; do
-    python ablation.py --attack "$attack" $flags
+    for padversaries in 0.1 0.4; do
+      python ablation.py --attack "$attack" --padversaries "$padversaries" $flags
+    done
   done
 done
 

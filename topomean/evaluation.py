@@ -104,7 +104,11 @@ if __name__ == "__main__":
 
     ablation_data = pd.read_csv("results/ablation.csv")
     ablation_data = ablation_data.drop(columns=['seed', 'repetitions'])
-    print_latex(ablation_data, hide_index=True)
+    print("10% Adversaries ablation:")
+    print_latex(ablation_data.query("`padversaries` == 0.1").drop(columns="padversaries"), hide_index=True)
+    print()
+    print("40% Adversaries ablation:")
+    print_latex(ablation_data.query("`padversaries` == 0.4").drop(columns="padversaries"), hide_index=True)
 
     comparison_data = pd.read_csv("results/comparison.csv")
     comparison_data = comparison_data.drop(columns=['seed', 'repetitions', 'npoints'])
