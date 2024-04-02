@@ -32,7 +32,7 @@ for K in $(seq 2 10); do
   for dimensions in $(seq 2 10); do
     python sensitivity.py --K "$K" --dimensions "$dimensions"
   done
-# done
+done
 
 
 # Then we ablate the overall algorithm

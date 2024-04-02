@@ -61,12 +61,12 @@ def topomean(samples: npt.NDArray, e1: float = 0.01, e2: float = 1.0, K: int = 3
     scores = np.sum(neighbourhoods, axis=1)
     sphere_idx = np.argpartition(-scores, len(scores) // K)[:len(scores) // K]
     sphere_scores = scores[sphere_idx]
-    sphere_centres = np.einsum('bx,ab->bx', samples, neighbourhoods / neighbourhoods.sum(1))
+    sphere_centres = np.einsum('bx,bd -> dx', samples, neighbourhoods / neighbourhoods.sum(1))
     sphere_centres = sphere_centres[sphere_idx]
     # Scale scores according to expected proportion of unique points the sphere would contain
     centre_dists = sp.spatial.distance.cdist(sphere_centres, sphere_centres)
     ts = centre_dists / sigma
     non_overlap = 1 - sp.stats.norm.cdf(ts)
     # Use scaled density score to weight the average of the sphere centres
-    p = non_overlap[np.argmax(non_overlap.sum(1))] * sphere_scores
+    p = non_overlap.sum(1) * sphere_scores
     return np.average(sphere_centres, weights=p / p.sum(), axis=0)
