@@ -118,60 +118,49 @@ def test(
     episodes: int,
     timesteps: int,
     forecast_window: int,
-    fairness: bool,
+    cs: float,
     args_dict: Dict[str, str | int | float | bool]
 ) -> Tuple[str, str]:
     testing_data = load_file('data/testing.safetensors')
     server.setup_test()
     client_forecasts, true_forecasts = [], []
-    if fairness:
-        dropped_cfs, dropped_tfs = [], []
+    dropped_cfs, dropped_tfs = [], []
     for e in trange(episodes):
         server.reset()
         for t in range(timesteps):
             obs_load_p = testing_data[f"E{e}T{t}:load_p"]
             obs_gen_p = testing_data[f"E{e}T{t}:gen_p"]
             obs_time = testing_data[f"E{e}T{t}:time"]
-            test_result = server.add_test_data(obs_load_p, obs_gen_p, obs_time, fairness=fairness)
-            if fairness:
-                true_forecast, client_forecast, dropped_tf, dropped_cf = test_result
-            else:
-                true_forecast, client_forecast = test_result
+            # TODO: Fix add test data
+            true_forecast, client_forecast, dropped_tf, dropped_cf = server.add_test_data(
+                obs_load_p, obs_gen_p, obs_time,
+            )
             true_forecasts.append(true_forecast)
             client_forecasts.append(client_forecast)
-            if fairness:
-                dropped_tfs.append(dropped_tf)
-                dropped_cfs.append(dropped_cf)
+            dropped_tfs.append(dropped_tf)
+            dropped_cfs.append(dropped_cf)
+    # TODO: Add forecast processing function
     client_forecasts = np.array(client_forecasts[forecast_window - 1:-1])
     true_forecasts = np.array(true_forecasts[forecast_window - 1:-1])
-    if fairness:
-        dropped_cfs = np.array(dropped_cfs[forecast_window - 1:-1])
-        dropped_tfs = np.array(dropped_tfs[forecast_window - 1:-1])
+    dropped_cfs = np.array(dropped_cfs[forecast_window - 1:-1])
+    dropped_tfs = np.array(dropped_tfs[forecast_window - 1:-1])
     client_forecasts = client_forecasts.reshape(-1, 2)[forecast_window - 1:-1]
     true_forecasts = true_forecasts.reshape(-1, 2)[forecast_window - 1:-1]
-    if fairness:
-        dropped_cfs = dropped_cfs.reshape(-1, 2)[forecast_window - 1:-1]
-        dropped_tfs = dropped_tfs.reshape(-1, 2)[forecast_window - 1:-1]
+    dropped_cfs = dropped_cfs.reshape(-1, 2)[forecast_window - 1:-1]
+    dropped_tfs = dropped_tfs.reshape(-1, 2)[forecast_window - 1:-1]
 
-    header = "mae,rmse,r2_score,"
-    if fairness:
-        header += "dropped mae,dropped rmse,dropped r2_score,"
-    header += ",".join(args_dict.keys())
-    results = "{},{},{},".format(
+    header = "mae,rmse,r2_score,dropped mae,dropped rmse,dropped r2_score," + ",".join(args_dict.keys())
+    results = "{},{},{},{},{},{},".format(
         metrics.mean_absolute_error(true_forecasts, client_forecasts),
         math.sqrt(metrics.mean_squared_error(true_forecasts, client_forecasts)),
         metrics.r2_score(true_forecasts, client_forecasts),
+        metrics.mean_absolute_error(dropped_tfs, dropped_cfs),
+        math.sqrt(metrics.mean_squared_error(dropped_tfs, dropped_cfs)),
+        metrics.r2_score(dropped_tfs, dropped_cfs),
     )
-    if fairness:
-        results += "{},{},{},".format(
-            metrics.mean_absolute_error(dropped_tfs, dropped_cfs),
-            math.sqrt(metrics.mean_squared_error(dropped_tfs, dropped_cfs)),
-            metrics.r2_score(dropped_tfs, dropped_cfs),
-        )
     results += ",".join([str(v) for v in args_dict.values()])
-    if cs:
-        header += ",cosine_similarity"
-        results += f",{cs}"
+    header += ",cosine_similarity"
+    results += f",{cs}"
     logger.info(f"{results=}")
     return header, results
 
@@ -199,7 +188,6 @@ if __name__ == "__main__":
                         help="Aggregation algorithm to use at the FL server.")
     parser.add_argument("--middle-server-aggregator", type=str, default="fedavg",
                         help="Aggregation algorithm to use at the FL middle server.")
-    parser.add_argument("--fairness", action="store_true", help="Perform the fairness evaluation.")
     parser.add_argument("--attack", type=str, default="none",
                         help="Perform model poisoning on the federated learning model.")
     parser.add_argument('--drop-point', type=float, default=1.1,
@@ -236,12 +224,13 @@ if __name__ == "__main__":
     cs = train(server, args.episodes, args.timesteps, args.batch_size, args.forecast_window, drop_episode)
 
     logger.info("Testing the trained model.")
-    header, results = test(server, args.episodes, args.timesteps, args.forecast_window, args.fairness, vars(args))
+    header, results = test(
+        server, args.episodes, args.timesteps, args.forecast_window, cs, vars(args)
+    )
 
     # Record the results
     os.makedirs("results", exist_ok=True)
-    file_suffix = "attack" if args.attack else "fairness" if args.fairness else "performance"
-    filename = f"results/l2rpn_{file_suffix}.csv"
+    filename = "results/l2rpn.csv"
     if not os.path.exists(filename):
         with open(filename, 'w') as f:
             f.write(header + "\n")
