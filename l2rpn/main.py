@@ -36,7 +36,6 @@ def setup(
     middle_server_fp=False,
     middle_server_mrcs=False,
     intermediate_finetuning=0,
-    compute_cs=False,
     attack="",
     pct_adversaries=0.5,
     pct_saturation=1.0,
@@ -83,7 +82,6 @@ def setup(
         middle_servers,
         rounds,
         batch_size,
-        compute_cs=compute_cs,
         finetune_episodes=intermediate_finetuning,
         aggregate_fn=getattr(fl, server_aggregator),
     )
@@ -131,7 +129,6 @@ def test(
             obs_load_p = testing_data[f"E{e}T{t}:load_p"]
             obs_gen_p = testing_data[f"E{e}T{t}:gen_p"]
             obs_time = testing_data[f"E{e}T{t}:time"]
-            # TODO: Fix add test data
             true_forecast, client_forecast, dropped_tf, dropped_cf = server.add_test_data(
                 obs_load_p, obs_gen_p, obs_time,
             )
@@ -139,30 +136,31 @@ def test(
             client_forecasts.append(client_forecast)
             dropped_tfs.append(dropped_tf)
             dropped_cfs.append(dropped_cf)
-    # TODO: Add forecast processing function
-    client_forecasts = np.array(client_forecasts[forecast_window - 1:-1])
-    true_forecasts = np.array(true_forecasts[forecast_window - 1:-1])
-    dropped_cfs = np.array(dropped_cfs[forecast_window - 1:-1])
-    dropped_tfs = np.array(dropped_tfs[forecast_window - 1:-1])
-    client_forecasts = client_forecasts.reshape(-1, 2)[forecast_window - 1:-1]
-    true_forecasts = true_forecasts.reshape(-1, 2)[forecast_window - 1:-1]
-    dropped_cfs = dropped_cfs.reshape(-1, 2)[forecast_window - 1:-1]
-    dropped_tfs = dropped_tfs.reshape(-1, 2)[forecast_window - 1:-1]
+    client_forecasts = process_forecasts(client_forecasts, forecast_window)
+    true_forecasts = process_forecasts(true_forecasts, forecast_window)
+    dropped_cfs = process_forecasts(dropped_cfs, forecast_window)
+    dropped_tfs = process_forecasts(dropped_tfs, forecast_window)
 
     header = "mae,rmse,r2_score,dropped mae,dropped rmse,dropped r2_score," + ",".join(args_dict.keys())
     results = "{},{},{},{},{},{},".format(
         metrics.mean_absolute_error(true_forecasts, client_forecasts),
         math.sqrt(metrics.mean_squared_error(true_forecasts, client_forecasts)),
         metrics.r2_score(true_forecasts, client_forecasts),
-        metrics.mean_absolute_error(dropped_tfs, dropped_cfs),
-        math.sqrt(metrics.mean_squared_error(dropped_tfs, dropped_cfs)),
-        metrics.r2_score(dropped_tfs, dropped_cfs),
+        metrics.mean_absolute_error(dropped_tfs, dropped_cfs) if dropped_cfs.shape[0] > 0 else 0.0,
+        math.sqrt(metrics.mean_squared_error(dropped_tfs, dropped_cfs)) if dropped_cfs.shape[0] > 0 else 0.0,
+        metrics.r2_score(dropped_tfs, dropped_cfs) if dropped_cfs.shape[0] > 0 else 0.0,
     )
     results += ",".join([str(v) for v in args_dict.values()])
     header += ",cosine_similarity"
     results += f",{cs}"
     logger.info(f"{results=}")
     return header, results
+
+
+def process_forecasts(forecasts, forecast_window):
+    forecasts = np.array(forecasts[forecast_window - 1:-1])
+    forecasts = forecasts.reshape(-1, 2)[forecast_window - 1:-1]
+    return forecasts
 
 
 if __name__ == "__main__":
@@ -213,7 +211,6 @@ if __name__ == "__main__":
         middle_server_fp=args.middle_server_fp,
         middle_server_mrcs=args.middle_server_mrcs,
         intermediate_finetuning=args.intermediate_finetuning,
-        compute_cs=not args.attack and not args.fairness,
         attack=args.attack,
         pct_adversaries=args.pct_adversaries,
         pct_saturation=args.pct_saturation,

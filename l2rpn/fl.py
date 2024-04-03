@@ -182,17 +182,16 @@ class Server:
         rounds,
         batch_size,
         aggregate_fn=fedavg,
-        compute_cs=False,
         finetune_episodes=0,
     ):
         self.model = model
         self.global_params = global_params
         self.clients = clients
+        self.all_clients = clients.copy()  # To maintain track of clients after dropping
         self.rounds = rounds
         self.batch_size = batch_size
         self.aggregate = aggregate_fn
         self.finetune_episodes = finetune_episodes
-        self.compute_cs = compute_cs
 
     def reset(self):
         for client in self.clients:
@@ -210,7 +209,7 @@ class Server:
         for client in self.clients:
             client.add_data(obs_load_p, obs_gen_p, obs_time)
 
-    def add_test_data(self, obs_load_p, obs_gen_p, obs_time, fairness=False):
+    def add_test_data(self, obs_load_p, obs_gen_p, obs_time):
         true_forecasts, predicted_forecasts = [], []
         for client in self.clients:
             true_forecast, predicted_forecast = client.add_test_data(obs_load_p, obs_gen_p, obs_time)
@@ -221,19 +220,18 @@ class Server:
                 true_forecasts.append(true_forecast)
                 predicted_forecasts.append(predicted_forecast)
         true_forecasts, predicted_forecasts = np.array(true_forecasts), np.array(predicted_forecasts)
-        if not fairness:
-            return true_forecasts, predicted_forecasts
         # Evaluation of the dropped client's performance
         ndropped_clients = len(self.all_clients) - len(self.clients)
         d_true_forecasts, d_predicted_forecasts = [], []
-        for client in self.all_clients[-ndropped_clients:]:
-            d_true_forecast, d_predicted_forecast = client.add_test_data(obs_load_p, obs_gen_p, obs_time)
-            if isinstance(d_true_forecast, list):
-                d_true_forecasts.extend(d_true_forecast)
-                d_predicted_forecasts.extend(d_predicted_forecast)
-            else:
-                d_true_forecasts.append(d_true_forecast)
-                d_predicted_forecasts.append(d_predicted_forecast)
+        if ndropped_clients > 0:
+            for client in self.all_clients[-ndropped_clients:]:
+                d_true_forecast, d_predicted_forecast = client.add_test_data(obs_load_p, obs_gen_p, obs_time)
+                if isinstance(d_true_forecast, list):
+                    d_true_forecasts.extend(d_true_forecast)
+                    d_predicted_forecasts.extend(d_predicted_forecast)
+                else:
+                    d_true_forecasts.append(d_true_forecast)
+                    d_predicted_forecasts.append(d_predicted_forecast)
         d_true_forecasts, d_predicted_forecasts = np.array(d_true_forecasts), np.array(d_predicted_forecasts)
         return true_forecasts, predicted_forecasts, d_true_forecasts, d_predicted_forecasts
 
@@ -243,8 +241,7 @@ class Server:
             all_losses, all_grads = self.inner_step()
             self.global_params = tree_add(self.global_params, self.aggregate(all_grads))
         logger.info(f"Done. FL Server Loss: {np.mean(all_losses):.5f}")
-        if self.compute_cs:
-            return cosine_similarity(self.global_params, all_grads)
+        return cosine_similarity(self.global_params, all_grads)
 
     def inner_step(self):
         all_grads = []
@@ -258,7 +255,6 @@ class Server:
 
     def drop_clients(self):
         logger.info("Dropping clients")
-        self.all_clients = self.clients.copy()
         nclients = len(self.clients)
         for _ in range(round(nclients * 0.4)):
             self.clients.pop()
