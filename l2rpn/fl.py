@@ -132,12 +132,12 @@ class Client:
         self.past_load = collections.deque([], maxlen=self.forecast_window)
         self.past_gen = collections.deque([], maxlen=self.forecast_window)
 
-    def add_data(self, obs):
-        load_p = obs.load_p[self.load_id].sum() if self.load_id is not None else 0.0
-        gen_p = obs.gen_p[self.gen_id].sum() if self.gen_id is not None else 0.0
+    def add_data(self, obs_load_p, obs_gen_p, obs_time):
+        load_p = obs_load_p[self.load_id].sum() if self.load_id is not None else 0.0
+        gen_p = obs_gen_p[self.gen_id].sum() if self.gen_id is not None else 0.0
         if len(self.past_load) == self.forecast_window:
             sample = np.concatenate((
-                np.array([obs.hour_of_day, obs.minute_of_hour]),
+                obs_time,
                 np.array(self.past_load),
                 np.array(self.past_gen),
             ))
@@ -145,17 +145,17 @@ class Client:
         self.past_load.append(load_p)
         self.past_gen.append(gen_p)
 
-    def add_test_data(self, obs):
+    def add_test_data(self, obs_load_p, obs_gen_p, obs_time):
         true_forecast, predicted_forecast = np.zeros(2), np.zeros(2)
-        load_p = obs.load_p[self.load_id].sum() if self.load_id is not None else 0.0
-        gen_p = obs.gen_p[self.gen_id].sum() if self.gen_id is not None else 0.0
+        load_p = obs_load_p[self.load_id].sum() if self.load_id is not None else 0.0
+        gen_p = obs_gen_p[self.gen_id].sum() if self.gen_id is not None else 0.0
         if len(self.past_load) == self.forecast_window:
             true_forecast = np.array([load_p, gen_p])
         self.past_load.append(load_p)
         self.past_gen.append(gen_p)
         if len(self.past_load) == self.forecast_window:
             sample = np.concatenate((
-                np.array([obs.hour_of_day, obs.minute_of_hour]),
+                obs_time,
                 np.array(self.past_load),
                 np.array(self.past_gen),
             ))
@@ -206,14 +206,14 @@ class Server:
                 client.step(self.global_params, self.batch_size)
             client.reset()
 
-    def add_data(self, obs):
+    def add_data(self, obs_load_p, obs_gen_p, obs_time):
         for client in self.clients:
-            client.add_data(obs)
+            client.add_data(obs_load_p, obs_gen_p, obs_time)
 
-    def add_test_data(self, obs, fairness=False):
+    def add_test_data(self, obs_load_p, obs_gen_p, obs_time, fairness=False):
         true_forecasts, predicted_forecasts = [], []
         for client in self.clients:
-            true_forecast, predicted_forecast = client.add_test_data(obs)
+            true_forecast, predicted_forecast = client.add_test_data(obs_load_p, obs_gen_p, obs_time)
             if isinstance(true_forecast, list):
                 true_forecasts.extend(true_forecast)
                 predicted_forecasts.extend(predicted_forecast)
@@ -227,7 +227,7 @@ class Server:
         ndropped_clients = len(self.all_clients) - len(self.clients)
         d_true_forecasts, d_predicted_forecasts = [], []
         for client in self.all_clients[-ndropped_clients:]:
-            d_true_forecast, d_predicted_forecast = client.add_test_data(obs)
+            d_true_forecast, d_predicted_forecast = client.add_test_data(obs_load_p, obs_gen_p, obs_time)
             if isinstance(d_true_forecast, list):
                 d_true_forecasts.extend(d_true_forecast)
                 d_predicted_forecasts.extend(d_predicted_forecast)
@@ -404,14 +404,14 @@ class MiddleServer:
         for client in self.clients:
             client.set_params(global_params)
 
-    def add_data(self, obs):
+    def add_data(self, obs_load_p, obs_gen_p, obs_time):
         for client in self.clients:
-            client.add_data(obs)
+            client.add_data(obs_load_p, obs_gen_p, obs_time)
 
-    def add_test_data(self, obs):
+    def add_test_data(self, obs_load_p, obs_gen_p, obs_time):
         true_forecasts, predicted_forecasts = [], []
         for client in self.clients:
-            true_forecast, predicted_forecast = client.add_test_data(obs)
+            true_forecast, predicted_forecast = client.add_test_data(obs_load_p, obs_gen_p, obs_time)
             true_forecasts.append(true_forecast)
             predicted_forecasts.append(predicted_forecast)
         return true_forecasts, predicted_forecasts
