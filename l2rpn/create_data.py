@@ -39,8 +39,7 @@ if __name__ == "__main__":
 
     start_time = time.time()
     os.makedirs("data", exist_ok=True)
-    # env_name = "l2rpn_idf_2023"
-    env_name = "l2rpn_case14_sandbox"  # Just for testing
+    env_name = "l2rpn_idf_2023"
     env = grid2op.make(
         env_name,
         backend=LightSimBackend(),
