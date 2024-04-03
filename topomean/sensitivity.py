@@ -49,7 +49,10 @@ if __name__ == "__main__":
         honest_mean = honest_x.mean(0)
         full_mean = x.mean(0)
         errors[r] = np.linalg.norm(honest_mean - agg_mean)
-        improvements[r] = 1 - errors[r] / np.linalg.norm(honest_mean - full_mean)
+        if args.attack == "no_attack":
+            improvements[r] = 0
+        else:
+            improvements[r] = 1 - errors[r] / np.linalg.norm(honest_mean - full_mean)
         pbar.set_postfix_str(f"ERR: {errors[r]:.3f}, IMP: {improvements[r]:.3%}")
 
     print(("=" * 20) + " Results " + ("=" * 20))

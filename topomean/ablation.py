@@ -2,57 +2,10 @@ import argparse
 import time
 import os
 import numpy as np
-import numpy.typing as npt
 import scipy as sp
 from tqdm import trange
 
-
-def topomean(
-    samples: npt.NDArray,
-    eliminate_close: bool = True,
-    take_dense_spheres: bool = True,
-    scale_by_overlap: bool = True,
-) -> npt.NDArray:
-    """
-    Assumptions:
-    - Attacking clients are in the minority
-    - Updates are i.i.d.
-    - Updates follow a normal distribution
-    """
-    e1 = 0.01
-    e2 = 1.0
-    K = 3
-    sigma = np.std(samples)
-    # Eliminate samples that are too close to eachother, leaving only one representative
-    dists = sp.spatial.distance.cdist(samples, samples)
-    if eliminate_close:
-        far_enough_idx = np.all((dists + (np.eye(len(samples)) * e1 * sigma)) >= (e1 * sigma), axis=0)
-        samples = samples[far_enough_idx]
-        dists = dists[np.ix_(far_enough_idx, far_enough_idx)]
-    # Find and take only the highest scoring neighbourhoods
-    sigma = np.std(samples)
-    radius = sigma * e2
-    if take_dense_spheres:
-        neighbourhoods = dists <= radius
-        scores = np.sum(neighbourhoods, axis=1)
-        sphere_idx = np.argpartition(-scores, len(scores) // K)[:len(scores) // K]
-        sphere_scores = scores[sphere_idx]
-        sphere_centres = np.einsum('bx,bd -> dx', samples, neighbourhoods / neighbourhoods.sum(1))
-        sphere_centres = sphere_centres[sphere_idx]
-    else:
-        scores = np.sum(dists, axis=1)
-        sphere_centres = samples
-        sphere_scores = scores
-    # Scale scores according to expected proportion of unique points the sphere would contain
-    if scale_by_overlap:
-        centre_dists = sp.spatial.distance.cdist(sphere_centres, sphere_centres)
-        ts = centre_dists / sigma
-        non_overlap = 1 - sp.stats.norm.cdf(ts)
-        # Use scaled density score to weight the average of the sphere centres
-        p = non_overlap.sum(1) * sphere_scores
-    else:
-        p = np.ones(len(sphere_centres))
-    return np.average(sphere_centres, weights=p / p.sum(), axis=0)
+import aggregators
 
 
 if __name__ == "__main__":
@@ -88,7 +41,12 @@ if __name__ == "__main__":
             case "shifted_random":
                 attack_x = rng.normal(6, np.std(honest_x, 0), (nadversaries, dimensions))
         x = np.concatenate((honest_x, attack_x))
-        agg_mean = topomean(x, args.eliminate_close, args.take_dense_spheres, args.scale_by_overlap)
+        agg_mean = aggregators.topomean(
+            x,
+            eliminate_close=args.eliminate_close,
+            take_dense_spheres=args.take_dense_spheres,
+            scale_by_overlap=args.scale_by_overlap
+        )
         honest_mean = honest_x.mean(0)
         full_mean = x.mean(0)
         errors[r] = np.linalg.norm(honest_mean - agg_mean)

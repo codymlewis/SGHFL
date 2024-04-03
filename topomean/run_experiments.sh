@@ -10,10 +10,6 @@ done
 
 # Next we evaluate the relationship between e2 and {dimensionality, number of adversaries}
 for e2 in $(seq 1.0 0.5 10.0); do
-  for padversaries in $(seq 0.1 0.1 0.5); do
-    python sensitivity.py --e2 "$e2" --padversaries "$padversaries"
-  done
-
   for dimensions in $(seq 2 10); do
     python sensitivity.py --e2 "$e2" --dimensions "$dimensions"
   done
@@ -24,19 +20,11 @@ for K in $(seq 2 10); do
   for padversaries in $(seq 0.1 0.1 0.5); do
     python sensitivity.py --K "$K" --padversaries "$padversaries"
   done
-
-  for npoints in $(seq 100 100 1000); do
-    python sensitivity.py --K "$K" --npoints "$npoints"
-  done
-
-  for dimensions in $(seq 2 10); do
-    python sensitivity.py --K "$K" --dimensions "$dimensions"
-  done
 done
 
 
 # Then we ablate the overall algorithm
-for attack in "lie" "shifted_random"; do
+for attack in "no_attack" "lie" "shifted_random"; do
   for flags in {'','--eliminate-close'}' '{'','--take-dense-spheres'}' '{'','--scale-by-overlap'}; do
     for padversaries in 0.1 0.4; do
       python ablation.py --attack "$attack" --padversaries "$padversaries" $flags
