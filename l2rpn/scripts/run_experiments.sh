@@ -7,26 +7,28 @@ run_many_seeds () {
     done
 }
 
-for extra in {'','--middle-server-km','--middle-server-fp'}' '{'','--intermediate-finetuning 5'}; do
-    run_many_seeds "python main.py $extra" 10
-done
+for attack in "none" "empty" "lie" "ipm"; do
+    for server_aggregator in "fedavg" "median" "topk" "krum" "trimmed_mean" "phocas" "geomedian" "kickback_momentum" "fedprox" "mrcs"; do
+        for ms_aggregator in "fedavg" "median" "topk" "krum" "trimmed_mean" "phocas" "geomedian" "kickback_momentum" "fedprox" "mrcs"; do
+            for if_steps in 0 5; do
+                for drop_point in 0.4 0.8 1.1; do
+                    if attack == "none"; then
+                        run_many_seeds "python main.py --attack $attack --server-aggregator $server_aggregator --middle-server-aggregator $ms_aggregator --intermediate-finetuning $if_steps --drop-point $drop_point" 10
+                    else
+                        for sat in $(seq 0 0.1 1); do
+                            run_many_seeds "python main.py --attack $attack --server-aggregator $server_aggregator --middle-server-aggregator $ms_aggregator --intermediate-finetuning $if_steps --drop-point $drop_point --pct-saturation $sat --pct-adversaries 1.0" 10
+                        done
+                        for adv in $(seq 0 0.1 1); do
+                            run_many_seeds "python main.py --attack $attack --server-aggregator $server_aggregator --middle-server-aggregator $ms_aggregator --intermediate-finetuning $if_steps --drop-point $drop_point --pct-saturation 1.0 --pct-adversaries $adv" 10
 
-for attack in "empty" "lie" "ipm"; do
-    for aggregator in "fedavg" "median" "centre" "krum" "trimmed_mean"; do
-        for sat in $(seq 0 0.1 1); do
-            run_many_seeds "python main.py --attack $attack --server-aggregator $aggregator --pct-saturation $sat --pct-adversaries 1.0" 10
-        done
-        for adv in $(seq 0 0.1 1); do
-            run_many_seeds "python main.py --attack $attack --server-aggregator $aggregator --pct-saturation 1.0 --pct-adversaries $adv" 10
-
-            if (( $(echo "$adv > 0.4" | bc -l) )); then
-                sat="$(echo 0.5  / $adv | bc -l)"
-                run_many_seeds "python main.py --attack $attack --server-aggregator $aggregator --pct-saturation $sat --pct-adversaries $adv" 10
-            fi
+                            if (( $(echo "$adv > 0.4" | bc -l) )); then
+                                sat="$(echo 0.5  / $adv | bc -l)"
+                                run_many_seeds "python main.py --attack $attack --server-aggregator $server_aggregator --middle-server-aggregator $ms_aggregator --intermediate-finetuning $if_steps --drop-point $drop_point --pct-saturation $sat --pct-adversaries $adv" 10
+                            fi
+                        done
+                    fi
+                done
+            done
         done
     done
-done
-
-for extra in {'','--middle-server-aggregator topk'}' '{'','--middle-server-km','--middle-server-fp','--middle-server-mrcs'}' '{'','--intermediate-finetuning 5'}; do
-    run_many_seeds "python main.py --fairness $extra" 10
 done
