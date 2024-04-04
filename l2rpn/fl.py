@@ -4,6 +4,7 @@ from typing import Tuple
 import numpy as np
 import jax
 import jax.numpy as jnp
+import jax.scipy.optimize as jspo
 import chex
 import flax.linen as nn
 from flax.training import train_state
@@ -98,8 +99,8 @@ def krum(all_params):
 
 
 @jax.jit
-def trimmed_mean(all_params):
-    reject_i = round(0.25 * len(all_params))
+def trimmed_mean(all_params, c=0.5):
+    reject_i = round((c / 2) * len(all_params))
     X = jnp.array([jax.flatten_util.ravel_pytree(p)[0] for p in all_params])
     unflattener = jax.flatten_util.ravel_pytree(all_params[0])[1]
     sorted_X = jnp.sort(X, axis=0)
@@ -107,167 +108,33 @@ def trimmed_mean(all_params):
 
 
 @jax.jit
+def phocas(all_params, c=0.5):
+    X = jnp.array([jax.flatten_util.ravel_pytree(p)[0] for p in all_params])
+    unflattener = jax.flatten_util.ravel_pytree(all_params[0])[1]
+    # First find the trimmed mean
+    reject_i = round((c / 2) * len(all_params))
+    sorted_X = jnp.sort(X, axis=0)
+    trmean_X = jnp.mean(sorted_X[reject_i:-reject_i], axis=0)
+    # Then use it for Phocas
+    tm_closest_idx = jnp.argsort(jnp.linalg.norm(X - trmean_X, axis=0))[:round((1 - c) * len(all_params))]
+    return unflattener(jnp.mean(X[tm_closest_idx], axis=0))
+
+
+@jax.jit
+def geomedian(all_params):
+    X = jnp.array([jax.flatten_util.ravel_pytree(p)[0] for p in all_params])
+    unflattener = jax.flatten_util.ravel_pytree(all_params[0])[1]
+    return unflattener(jspo.minimize(
+        lambda x: jnp.linalg.norm(X - x),
+        x0=jnp.mean(X, axis=0),
+        method="BFGS"
+    ).x)
+
+
+@jax.jit
 def centre(all_params):
     nclusters = len(all_params) // 2 + 1
     return jax.tree_util.tree_map(lambda *x: kmeans.fit(jnp.array(x), nclusters)['centroids'].mean(axis=0), *all_params)
-
-
-class Client:
-    def __init__(self, client_id, model, load_id, gen_id, num_episodes, forecast_window, buffer_size: int = 1000, seed=0):
-        self.past_load = collections.deque([], maxlen=forecast_window)
-        self.past_gen = collections.deque([], maxlen=forecast_window)
-        self.data = ForecastBatch.create(num_episodes * buffer_size, forecast_window)
-        self.state = train_state.TrainState.create(
-            apply_fn=model.apply,
-            params=model.init(jax.random.PRNGKey(0), self.data.X[:1]),
-            tx=optax.adam(0.01),
-        )
-        self.load_id = load_id
-        self.gen_id = gen_id
-        self.forecast_window = forecast_window
-        self.id = client_id
-        self.rng = np.random.default_rng(seed)
-
-    def reset(self):
-        self.past_load = collections.deque([], maxlen=self.forecast_window)
-        self.past_gen = collections.deque([], maxlen=self.forecast_window)
-
-    def add_data(self, obs_load_p, obs_gen_p, obs_time):
-        load_p = obs_load_p[self.load_id].sum() if self.load_id is not None else 0.0
-        gen_p = obs_gen_p[self.gen_id].sum() if self.gen_id is not None else 0.0
-        if len(self.past_load) == self.forecast_window:
-            sample = np.concatenate((
-                obs_time,
-                np.array(self.past_load),
-                np.array(self.past_gen),
-            ))
-            self.data.add(sample, np.array([load_p, gen_p]))
-        self.past_load.append(load_p)
-        self.past_gen.append(gen_p)
-
-    def add_test_data(self, obs_load_p, obs_gen_p, obs_time):
-        true_forecast, predicted_forecast = np.zeros(2), np.zeros(2)
-        load_p = obs_load_p[self.load_id].sum() if self.load_id is not None else 0.0
-        gen_p = obs_gen_p[self.gen_id].sum() if self.gen_id is not None else 0.0
-        if len(self.past_load) == self.forecast_window:
-            true_forecast = np.array([load_p, gen_p])
-        self.past_load.append(load_p)
-        self.past_gen.append(gen_p)
-        if len(self.past_load) == self.forecast_window:
-            sample = np.concatenate((
-                obs_time,
-                np.array(self.past_load),
-                np.array(self.past_gen),
-            ))
-            self.data.add(sample, np.array([load_p, gen_p]))
-            predicted_forecast = forecast(self.state, sample)
-        return true_forecast, predicted_forecast
-
-    def step(self, global_params, batch_size=128):
-        self.state = self.state.replace(params=global_params)
-        idx = self.rng.choice(len(self.data), batch_size, replace=False)
-        loss, self.state = learner_step(self.state, self.data.X[idx], self.data.Y[idx])
-        return loss, self.state.params
-
-    def set_params(self, global_params):
-        self.state = self.state.replace(params=global_params)
-
-
-class Server:
-    def __init__(
-        self,
-        model,
-        global_params,
-        clients,
-        rounds,
-        batch_size,
-        aggregate_fn=fedavg,
-        finetune_episodes=0,
-    ):
-        self.model = model
-        self.global_params = global_params
-        self.clients = clients
-        self.all_clients = clients.copy()  # To maintain track of clients after dropping
-        self.rounds = rounds
-        self.batch_size = batch_size
-        self.aggregate = aggregate_fn
-        self.finetune_episodes = finetune_episodes
-
-    def reset(self):
-        for client in self.clients:
-            client.reset()
-
-    def setup_test(self):
-        client_list = self.clients if not hasattr(self, "all_clients") else self.all_clients
-        for client in client_list:
-            client.set_params(self.global_params)
-            for _ in range(self.finetune_episodes):
-                client.step(self.global_params, self.batch_size)
-            client.reset()
-
-    def add_data(self, obs_load_p, obs_gen_p, obs_time):
-        for client in self.clients:
-            client.add_data(obs_load_p, obs_gen_p, obs_time)
-
-    def add_test_data(self, obs_load_p, obs_gen_p, obs_time):
-        true_forecasts, predicted_forecasts = [], []
-        for client in self.clients:
-            true_forecast, predicted_forecast = client.add_test_data(obs_load_p, obs_gen_p, obs_time)
-            if isinstance(true_forecast, list):
-                true_forecasts.extend(true_forecast)
-                predicted_forecasts.extend(predicted_forecast)
-            else:
-                true_forecasts.append(true_forecast)
-                predicted_forecasts.append(predicted_forecast)
-        true_forecasts, predicted_forecasts = np.array(true_forecasts), np.array(predicted_forecasts)
-        # Evaluation of the dropped client's performance
-        ndropped_clients = len(self.all_clients) - len(self.clients)
-        d_true_forecasts, d_predicted_forecasts = [], []
-        if ndropped_clients > 0:
-            for client in self.all_clients[-ndropped_clients:]:
-                d_true_forecast, d_predicted_forecast = client.add_test_data(obs_load_p, obs_gen_p, obs_time)
-                if isinstance(d_true_forecast, list):
-                    d_true_forecasts.extend(d_true_forecast)
-                    d_predicted_forecasts.extend(d_predicted_forecast)
-                else:
-                    d_true_forecasts.append(d_true_forecast)
-                    d_predicted_forecasts.append(d_predicted_forecast)
-        d_true_forecasts, d_predicted_forecasts = np.array(d_true_forecasts), np.array(d_predicted_forecasts)
-        return true_forecasts, predicted_forecasts, d_true_forecasts, d_predicted_forecasts
-
-    def step(self):
-        logger.info("Server is starting federated training of the forecast model")
-        for _ in range(self.rounds):
-            all_losses, all_grads = self.inner_step()
-            self.global_params = tree_add(self.global_params, self.aggregate(all_grads))
-        logger.info(f"Done. FL Server Loss: {np.mean(all_losses):.5f}")
-        return cosine_similarity(self.global_params, all_grads)
-
-    def inner_step(self):
-        all_grads = []
-        all_losses = []
-        for client in self.clients:
-            loss, params = client.step(self.global_params, self.batch_size)
-            grads = tree_sub(params, self.global_params)
-            all_grads.append(grads)
-            all_losses.append(loss)
-        return all_losses, all_grads
-
-    def drop_clients(self):
-        logger.info("Dropping clients")
-        nclients = len(self.clients)
-        for _ in range(round(nclients * 0.4)):
-            self.clients.pop()
-
-    @property
-    def num_clients(self):
-        amount_clients = 0
-        for c in self.clients:
-            if isinstance(c, MiddleServer):
-                amount_clients += len(c.clients)
-            else:
-                amount_clients += 1
-        return amount_clients
 
 
 class KickbackMomentum:
@@ -380,17 +247,192 @@ def polyak_average(old_value, new_value, mu):
     return jax.tree_util.tree_map(lambda o, n: (1 - mu) * o + mu * n, old_value, new_value)
 
 
-class MiddleServer:
-    def __init__(self, global_params, clients, aggregate_fn=fedavg, kickback_momentum=False, use_fedprox=False, mrcs=False):
+def get_aggregator(aggregator, params=None):
+    match aggregator:
+        case "fedavg":
+            return fedavg
+        case "median":
+            return median
+        case "topk":
+            return topk
+        case "krum":
+            return krum
+        case "trimmed_mean":
+            return trimmed_mean
+        case "phocas":
+            return phocas
+        case "geomedian":
+            return geomedian
+        case "kickback_momentum":
+            return KickbackMomentum(params)
+        case "fedprox":
+            return FedProx(params)
+        case "mrcs":
+            return MRCS(params)
+
+
+class Client:
+    def __init__(self, client_id, model, load_id, gen_id, num_episodes, forecast_window, buffer_size: int = 1000, seed=0):
+        self.past_load = collections.deque([], maxlen=forecast_window)
+        self.past_gen = collections.deque([], maxlen=forecast_window)
+        self.data = ForecastBatch.create(num_episodes * buffer_size, forecast_window)
+        self.state = train_state.TrainState.create(
+            apply_fn=model.apply,
+            params=model.init(jax.random.PRNGKey(0), self.data.X[:1]),
+            tx=optax.adam(0.01),
+        )
+        self.load_id = load_id
+        self.gen_id = gen_id
+        self.forecast_window = forecast_window
+        self.id = client_id
+        self.rng = np.random.default_rng(seed)
+
+    def reset(self):
+        self.past_load = collections.deque([], maxlen=self.forecast_window)
+        self.past_gen = collections.deque([], maxlen=self.forecast_window)
+
+    def add_data(self, obs_load_p, obs_gen_p, obs_time):
+        load_p = obs_load_p[self.load_id].sum() if self.load_id is not None else 0.0
+        gen_p = obs_gen_p[self.gen_id].sum() if self.gen_id is not None else 0.0
+        if len(self.past_load) == self.forecast_window:
+            sample = np.concatenate((
+                obs_time,
+                np.array(self.past_load),
+                np.array(self.past_gen),
+            ))
+            self.data.add(sample, np.array([load_p, gen_p]))
+        self.past_load.append(load_p)
+        self.past_gen.append(gen_p)
+
+    def add_test_data(self, obs_load_p, obs_gen_p, obs_time):
+        true_forecast, predicted_forecast = np.zeros(2), np.zeros(2)
+        load_p = obs_load_p[self.load_id].sum() if self.load_id is not None else 0.0
+        gen_p = obs_gen_p[self.gen_id].sum() if self.gen_id is not None else 0.0
+        if len(self.past_load) == self.forecast_window:
+            true_forecast = np.array([load_p, gen_p])
+        self.past_load.append(load_p)
+        self.past_gen.append(gen_p)
+        if len(self.past_load) == self.forecast_window:
+            sample = np.concatenate((
+                obs_time,
+                np.array(self.past_load),
+                np.array(self.past_gen),
+            ))
+            self.data.add(sample, np.array([load_p, gen_p]))
+            predicted_forecast = forecast(self.state, sample)
+        return true_forecast, predicted_forecast
+
+    def step(self, global_params, batch_size=128):
+        self.state = self.state.replace(params=global_params)
+        idx = self.rng.choice(len(self.data), batch_size, replace=False)
+        loss, self.state = learner_step(self.state, self.data.X[idx], self.data.Y[idx])
+        return loss, self.state.params
+
+    def set_params(self, global_params):
+        self.state = self.state.replace(params=global_params)
+
+
+class Server:
+    def __init__(
+        self,
+        model,
+        global_params,
+        clients,
+        rounds,
+        batch_size,
+        aggregator="fedavg",
+        finetune_episodes=0,
+    ):
+        self.model = model
+        self.global_params = global_params
         self.clients = clients
-        if kickback_momentum:
-            self.aggregate = KickbackMomentum(global_params, aggregate_fn=aggregate_fn)
-        elif use_fedprox:
-            self.aggregate = FedProx(global_params, aggregate_fn=aggregate_fn)
-        elif mrcs:
-            self.aggregate = MRCS(global_params, aggregate_fn=aggregate_fn)
-        else:
-            self.aggregate = aggregate_fn
+        self.all_clients = clients.copy()  # To maintain track of clients after dropping
+        self.rounds = rounds
+        self.batch_size = batch_size
+        self.aggregate = get_aggregator(aggregator, global_params)
+        self.finetune_episodes = finetune_episodes
+
+    def reset(self):
+        for client in self.clients:
+            client.reset()
+
+    def setup_test(self):
+        client_list = self.clients if not hasattr(self, "all_clients") else self.all_clients
+        for client in client_list:
+            client.set_params(self.global_params)
+            for _ in range(self.finetune_episodes):
+                client.step(self.global_params, self.batch_size)
+            client.reset()
+
+    def add_data(self, obs_load_p, obs_gen_p, obs_time):
+        for client in self.clients:
+            client.add_data(obs_load_p, obs_gen_p, obs_time)
+
+    def add_test_data(self, obs_load_p, obs_gen_p, obs_time):
+        true_forecasts, predicted_forecasts = [], []
+        for client in self.clients:
+            true_forecast, predicted_forecast = client.add_test_data(obs_load_p, obs_gen_p, obs_time)
+            if isinstance(true_forecast, list):
+                true_forecasts.extend(true_forecast)
+                predicted_forecasts.extend(predicted_forecast)
+            else:
+                true_forecasts.append(true_forecast)
+                predicted_forecasts.append(predicted_forecast)
+        true_forecasts, predicted_forecasts = np.array(true_forecasts), np.array(predicted_forecasts)
+        # Evaluation of the dropped client's performance
+        ndropped_clients = len(self.all_clients) - len(self.clients)
+        d_true_forecasts, d_predicted_forecasts = [], []
+        if ndropped_clients > 0:
+            for client in self.all_clients[-ndropped_clients:]:
+                d_true_forecast, d_predicted_forecast = client.add_test_data(obs_load_p, obs_gen_p, obs_time)
+                if isinstance(d_true_forecast, list):
+                    d_true_forecasts.extend(d_true_forecast)
+                    d_predicted_forecasts.extend(d_predicted_forecast)
+                else:
+                    d_true_forecasts.append(d_true_forecast)
+                    d_predicted_forecasts.append(d_predicted_forecast)
+        d_true_forecasts, d_predicted_forecasts = np.array(d_true_forecasts), np.array(d_predicted_forecasts)
+        return true_forecasts, predicted_forecasts, d_true_forecasts, d_predicted_forecasts
+
+    def step(self):
+        logger.info("Server is starting federated training of the forecast model")
+        for _ in range(self.rounds):
+            all_losses, all_grads = self.inner_step()
+            self.global_params = tree_add(self.global_params, self.aggregate(all_grads))
+        logger.info(f"Done. FL Server Loss: {np.mean(all_losses):.5f}")
+        return cosine_similarity(self.global_params, all_grads)
+
+    def inner_step(self):
+        all_grads = []
+        all_losses = []
+        for client in self.clients:
+            loss, params = client.step(self.global_params, self.batch_size)
+            grads = tree_sub(params, self.global_params)
+            all_grads.append(grads)
+            all_losses.append(loss)
+        return all_losses, all_grads
+
+    def drop_clients(self):
+        logger.info("Dropping clients")
+        nclients = len(self.clients)
+        for _ in range(round(nclients * 0.4)):
+            self.clients.pop()
+
+    @property
+    def num_clients(self):
+        amount_clients = 0
+        for c in self.clients:
+            if isinstance(c, MiddleServer):
+                amount_clients += len(c.clients)
+            else:
+                amount_clients += 1
+        return amount_clients
+
+
+class MiddleServer:
+    def __init__(self, global_params, clients, aggregator="fedavg"):
+        self.clients = clients
+        self.aggregate = get_aggregator(aggregator, global_params)
 
     def reset(self):
         for client in self.clients:

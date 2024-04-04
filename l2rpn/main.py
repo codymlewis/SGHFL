@@ -32,9 +32,6 @@ def setup(
     batch_size,
     server_aggregator="fedavg",
     middle_server_aggregator="fedavg",
-    middle_server_km=False,
-    middle_server_fp=False,
-    middle_server_mrcs=False,
     intermediate_finetuning=0,
     attack="",
     pct_adversaries=0.5,
@@ -70,10 +67,7 @@ def setup(
                     forecast_window
                 ) for c, si in enumerate(sids)
             ],
-            aggregate_fn=getattr(fl, middle_server_aggregator),
-            kickback_momentum=middle_server_km,
-            use_fedprox=middle_server_fp,
-            mrcs=middle_server_mrcs,
+            aggregator=middle_server_aggregator,
         ) for dc, sids in enumerate(np.array_split(substation_ids, num_middle_servers))
     ]
     server = fl.Server(
@@ -83,7 +77,7 @@ def setup(
         rounds,
         batch_size,
         finetune_episodes=intermediate_finetuning,
-        aggregate_fn=getattr(fl, server_aggregator),
+        aggregator=server_aggregator,
     )
     return server
 
@@ -177,9 +171,6 @@ if __name__ == "__main__":
                         help="Percentage of clients to assign as adversaries, if performing an attack evaluation")
     parser.add_argument("--pct-saturation", type=float, default=1.0,
                         help="The percentage of clients under adversary middle servers to assign as adversaries.")
-    parser.add_argument("--middle-server-km", action="store_true", help="Use Kickback momentum at the FL middle server")
-    parser.add_argument("--middle-server-fp", action="store_true", help="Use FedProx at the FL middle server")
-    parser.add_argument("--middle-server-mrcs", action="store_true", help="Use MRCS at the FL middle server")
     parser.add_argument("--intermediate-finetuning", type=int, default=0,
                         help="Finetune the FL models for n episodes prior to testing")
     parser.add_argument("--server-aggregator", type=str, default="fedavg",
@@ -207,9 +198,6 @@ if __name__ == "__main__":
         args.batch_size,
         server_aggregator=args.server_aggregator,
         middle_server_aggregator=args.middle_server_aggregator,
-        middle_server_km=args.middle_server_km,
-        middle_server_fp=args.middle_server_fp,
-        middle_server_mrcs=args.middle_server_mrcs,
         intermediate_finetuning=args.intermediate_finetuning,
         attack=args.attack,
         pct_adversaries=args.pct_adversaries,

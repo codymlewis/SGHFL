@@ -38,9 +38,12 @@ if __name__ == "__main__":
                 s = npoints // 2 + 1 - nadversaries
                 zmax = sp.stats.norm.ppf((npoints - s) / npoints)
                 attack_x = np.tile(np.mean(honest_x, 0) + zmax * np.std(honest_x, 0), (nadversaries, 1))
+                x = np.concatenate((honest_x, attack_x))
             case "shifted_random":
                 attack_x = rng.normal(6, np.std(honest_x, 0), (nadversaries, dimensions))
-        x = np.concatenate((honest_x, attack_x))
+                x = np.concatenate((honest_x, attack_x))
+            case "no_attack":
+                x = honest_x
         agg_mean = aggregators.topomean(
             x,
             eliminate_close=args.eliminate_close,
