@@ -12,7 +12,7 @@ for attack in "none" "empty" "lie" "ipm"; do
         for ms_aggregator in "fedavg" "median" "topk" "krum" "trimmed_mean" "phocas" "geomedian" "kickback_momentum" "fedprox" "mrcs"; do
             for if_steps in 0 5; do
                 for drop_point in 0.4 0.8 1.1; do
-                    if attack == "none"; then
+                    if [ $attack == 'none' ]; then
                         run_many_seeds "python main.py --attack $attack --server-aggregator $server_aggregator --middle-server-aggregator $ms_aggregator --intermediate-finetuning $if_steps --drop-point $drop_point" 10
                     else
                         for sat in $(seq 0 0.1 1); do
