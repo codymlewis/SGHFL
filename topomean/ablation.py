@@ -17,9 +17,10 @@ if __name__ == "__main__":
                         help="Number of times to repeat the experiment")
     parser.add_argument('-a', '--attack', type=str, default="shifted_random", help="Type of attack to perform.")
     parser.add_argument("--eliminate-close", action="store_true")
-    parser.add_argument("--take-dense-spheres", action="store_true")
+    parser.add_argument("--take-topomap", action="store_true")
     parser.add_argument("--scale-by-overlap", action="store_true")
     parser.add_argument("--padversaries", type=float, default=0.4, help="Proportion of adversaries.")
+    parser.add_argument("--aggregator", type=str, default="topomean", help="Aggregation algorithm to evaluate.")
     args = parser.parse_args()
     print(f"Experiment args: {vars(args)}")
     npoints = 1000
@@ -44,16 +45,22 @@ if __name__ == "__main__":
                 x = np.concatenate((honest_x, attack_x))
             case "no_attack":
                 x = honest_x
-        agg_mean = aggregators.topomean(
-            x,
-            eliminate_close=args.eliminate_close,
-            take_dense_spheres=args.take_dense_spheres,
-            scale_by_overlap=args.scale_by_overlap
-        )
+        if args.aggregator == "topomean":
+            agg_mean = aggregators.topomean(
+                x,
+                eliminate_close=args.eliminate_close,
+                take_topomap=args.take_topomap,
+                scale_by_overlap=args.scale_by_overlap
+            )
+        else:
+            agg_mean = getattr(aggregators, args.aggregator)(x)
         honest_mean = honest_x.mean(0)
         full_mean = x.mean(0)
         errors[r] = np.linalg.norm(honest_mean - agg_mean)
-        improvements[r] = 1 - errors[r] / np.linalg.norm(honest_mean - full_mean)
+        if args.attack == "no_attack":
+            improvements[r] = 0.0
+        else:
+            improvements[r] = 1 - errors[r] / np.linalg.norm(honest_mean - full_mean)
         pbar.set_postfix_str(f"ERR: {errors[r]:.3f}, IMP: {improvements[r]:.3%}")
 
     print(("=" * 20) + " Results " + ("=" * 20))

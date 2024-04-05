@@ -44,10 +44,10 @@ def phocas(samples: npt.NDArray, c: float = 0.5) -> npt.NDArray:
 def topomean(
     samples: npt.NDArray,
     e1: float = 0.01,
-    e2: float = 1.0,
-    K: int = 3,
+    e2: float = 0.1,
+    K: float = 0.5,
     eliminate_close: bool = True,
-    take_dense_spheres: bool = True,
+    take_topomap: bool = True,
     scale_by_overlap: bool = True,
 ) -> npt.NDArray:
     """
@@ -65,14 +65,24 @@ def topomean(
         dists = dists[np.ix_(far_enough_idx, far_enough_idx)]
     # Find and take only the highest scoring neighbourhoods
     sigma = np.std(samples)
-    radius = sigma * e2
-    if take_dense_spheres:
-        neighbourhoods = dists <= radius
-        scores = np.sum(neighbourhoods, axis=1)
-        sphere_idx = np.argpartition(-scores, len(scores) // K)[:len(scores) // K]
-        sphere_scores = scores[sphere_idx]
-        sphere_centres = np.einsum('bx,bd -> dx', samples, neighbourhoods / neighbourhoods.sum(1))
-        sphere_centres = sphere_centres[sphere_idx]
+    if take_topomap:
+        mu_dists = np.linalg.norm(samples - samples.mean(0), axis=1)
+        topomap = np.array([np.sum(mu_dists <= i * e2 * sigma) for i in range(1, round(3 / 0.1))])
+        topomap[1:] -= topomap[:-1]
+        peak_indices = np.argwhere((topomap[1:-1] >= topomap[2:]) & (topomap[1:-1] > topomap[:-2])).reshape(-1) + 1
+        sphere_centres = [np.array([samples.mean(0)])]
+        sphere_scores = [np.array([(mu_dists < sigma).sum()])]
+        # Find the densest points in each peak ring and add to sphere centres, use in proceeding part
+        for pi in peak_indices:
+            idx = np.where((mu_dists >= pi * e2 * sigma) & (mu_dists > (pi + 1) * e2 * sigma))
+            spike_scores = (dists[idx] < sigma).sum(1)
+            keep_idx = np.where(spike_scores > K * np.max(spike_scores))
+            sphere_scores.append(spike_scores[keep_idx])
+            sphere_centres.append(samples[keep_idx])
+        sphere_centres = np.concatenate(sphere_centres)
+        sphere_scores = np.concatenate(sphere_scores)
+        sphere_centres, sci = np.unique(sphere_centres, return_index=True, axis=0)
+        sphere_scores = sphere_scores[sci]
     else:
         scores = np.sum(dists, axis=1)
         sphere_centres = samples

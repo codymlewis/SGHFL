@@ -21,20 +21,21 @@ if __name__ == "__main__":
     parser.add_argument('-p', '--padversaries', type=float, default=0.4,
                         help="Proportion of points to assign as adversarial.")
     parser.add_argument("--e1", type=float, default=0.01, help="e1 parameter of topomean.")
-    parser.add_argument("--e2", type=float, default=1.0, help="e2 parameter of topomean.")
-    parser.add_argument("--K", type=int, default=3, help="K parameter of topomean.")
+    parser.add_argument("--e2", type=float, default=0.1, help="e2 parameter of topomean.")
+    parser.add_argument("--K", type=int, default=0.5, help="K parameter of topomean.")
     args = parser.parse_args()
     print(f"Experiment args: {vars(args)}")
 
     start_time = time.time()
     rng = np.random.default_rng(args.seed)
     nadversaries = round(args.npoints * args.padversaries)
+    attack = "no_attack" if nadversaries <= 0 else args.attack
 
     errors = np.zeros(args.repetitions)
     improvements = np.zeros(args.repetitions)
     for r in (pbar := trange(args.repetitions)):
         honest_x = rng.normal(1, 3, size=(args.npoints - nadversaries, args.dimensions))
-        match args.attack:
+        match attack:
             case "lie":
                 s = args.npoints // 2 + 1 - nadversaries
                 zmax = sp.stats.norm.ppf((args.npoints - s) / args.npoints)
@@ -49,7 +50,7 @@ if __name__ == "__main__":
         honest_mean = honest_x.mean(0)
         full_mean = x.mean(0)
         errors[r] = np.linalg.norm(honest_mean - agg_mean)
-        if args.attack == "no_attack":
+        if attack == "no_attack":
             improvements[r] = 0
         else:
             improvements[r] = 1 - errors[r] / np.linalg.norm(honest_mean - full_mean)

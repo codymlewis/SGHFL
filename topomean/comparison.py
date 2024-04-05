@@ -22,6 +22,7 @@ if __name__ == "__main__":
     start_time = time.time()
     rng = np.random.default_rng(args.seed)
     nadversaries = round(args.npoints * args.padversaries)
+    attack = "no_attack" if nadversaries <= 0 else args.attack
     dimensions = 2
 
     errors = np.zeros(args.repetitions)
@@ -34,7 +35,10 @@ if __name__ == "__main__":
         honest_mean = honest_x.mean(0)
         full_mean = x.mean(0)
         errors[r] = np.linalg.norm(honest_mean - agg_mean)
-        improvements[r] = 1 - errors[r] / np.linalg.norm(honest_mean - full_mean)
+        if attack == "no_attack":
+            improvements[r] = 0.0
+        else:
+            improvements[r] = 1 - errors[r] / np.linalg.norm(honest_mean - full_mean)
         pbar.set_postfix_str(f"ERR: {errors[r]:.3f}, IMP: {improvements[r]:.3%}")
 
     print(("=" * 20) + " Results " + ("=" * 20))

@@ -103,7 +103,8 @@ if __name__ == "__main__":
     create_plot(K_padv_data, "K", "improvement", "padversaries", "K_vs_padv_imp.pdf")
 
     ablation_data = pd.read_csv("results/ablation.csv")
-    ablation_data = ablation_data.drop(columns=['seed', 'repetitions'])
+    ablation_data = ablation_data.query("`aggregator` == 'topomean'")
+    ablation_data = ablation_data.drop(columns=['seed', 'repetitions', 'aggregator'])
     print("10% Adversaries ablation:")
     print_latex(ablation_data.query("`padversaries` == 0.1").drop(columns="padversaries"), hide_index=True)
     print()
