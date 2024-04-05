@@ -67,7 +67,7 @@ def topomean(
     sigma = np.std(samples)
     if take_topomap:
         mu_dists = np.linalg.norm(samples - samples.mean(0), axis=1)
-        topomap = np.array([np.sum(mu_dists <= i * e2 * sigma) for i in range(1, round(3 / 0.1))])
+        topomap = np.array([np.sum(mu_dists <= i * e2 * sigma) for i in range(1, round(3 / e2))])
         topomap[1:] -= topomap[:-1]
         peak_indices = np.argwhere((topomap[1:-1] >= topomap[2:]) & (topomap[1:-1] > topomap[:-2])).reshape(-1) + 1
         sphere_centres = [np.array([samples.mean(0)])]
@@ -76,9 +76,10 @@ def topomean(
         for pi in peak_indices:
             idx = np.where((mu_dists >= pi * e2 * sigma) & (mu_dists > (pi + 1) * e2 * sigma))
             spike_scores = (dists[idx] < sigma).sum(1)
-            keep_idx = np.where(spike_scores > K * np.max(spike_scores))
-            sphere_scores.append(spike_scores[keep_idx])
-            sphere_centres.append(samples[keep_idx])
+            if spike_scores.shape[0] > 0:
+                keep_idx = np.where(spike_scores > K * np.max(spike_scores))
+                sphere_scores.append(spike_scores[keep_idx])
+                sphere_centres.append(samples[keep_idx])
         sphere_centres = np.concatenate(sphere_centres)
         sphere_scores = np.concatenate(sphere_scores)
         sphere_centres, sci = np.unique(sphere_centres, return_index=True, axis=0)

@@ -22,7 +22,7 @@ if __name__ == "__main__":
                         help="Proportion of points to assign as adversarial.")
     parser.add_argument("--e1", type=float, default=0.01, help="e1 parameter of topomean.")
     parser.add_argument("--e2", type=float, default=0.1, help="e2 parameter of topomean.")
-    parser.add_argument("--K", type=int, default=0.5, help="K parameter of topomean.")
+    parser.add_argument("--K", type=float, default=0.5, help="K parameter of topomean.")
     args = parser.parse_args()
     print(f"Experiment args: {vars(args)}")
 
