@@ -23,7 +23,7 @@ def process_label(label: str | int | float) -> str:
 def create_plot(
     data: pd.DataFrame, param_key: str, dependent_key: str, legend_key: str, filename: str
 ) -> None:
-    markers = itertools.cycle(['o', 's', '*', 'x', '^', '2', 'v'])
+    markers = itertools.cycle(['o', 's', '*', 'X', '^', 'D', 'v', "P"])
     for legend in pd.unique(data[legend_key]):
         legend_data = data.query(
             f"""`{legend_key}` == {f"'{legend}'" if isinstance(legend, str) else legend}"""
