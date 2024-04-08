@@ -341,7 +341,6 @@ class Server:
         rounds,
         batch_size,
         aggregator="fedavg",
-        finetune_episodes=0,
     ):
         self.model = model
         self.global_params = global_params
@@ -350,17 +349,16 @@ class Server:
         self.rounds = rounds
         self.batch_size = batch_size
         self.aggregate = get_aggregator(aggregator, global_params)
-        self.finetune_episodes = finetune_episodes
 
     def reset(self):
         for client in self.clients:
             client.reset()
 
-    def setup_test(self):
+    def setup_test(self, finetune_episodes=0):
         client_list = self.clients if not hasattr(self, "all_clients") else self.all_clients
         for client in client_list:
             client.set_params(self.global_params)
-            for _ in range(self.finetune_episodes):
+            for _ in range(finetune_episodes):
                 client.step(self.global_params, self.batch_size)
             client.reset()
 

@@ -32,7 +32,6 @@ def setup(
     batch_size,
     server_aggregator="fedavg",
     middle_server_aggregator="fedavg",
-    intermediate_finetuning=0,
     attack="",
     pct_adversaries=0.5,
     pct_saturation=1.0,
@@ -76,7 +75,6 @@ def setup(
         middle_servers,
         rounds,
         batch_size,
-        finetune_episodes=intermediate_finetuning,
         aggregator=server_aggregator,
     )
     return server
@@ -111,10 +109,11 @@ def test(
     timesteps: int,
     forecast_window: int,
     cs: float,
-    args_dict: Dict[str, str | int | float | bool]
+    args_dict: Dict[str, str | int | float | bool],
+    finetune_episodes: int = 0,
 ) -> Tuple[str, str]:
     testing_data = load_file('data/testing.safetensors')
-    server.setup_test()
+    server.setup_test(finetune_episodes=finetune_episodes)
     client_forecasts, true_forecasts = [], []
     dropped_cfs, dropped_tfs = [], []
     for e in trange(episodes):
@@ -171,8 +170,6 @@ if __name__ == "__main__":
                         help="Percentage of clients to assign as adversaries, if performing an attack evaluation")
     parser.add_argument("--pct-saturation", type=float, default=1.0,
                         help="The percentage of clients under adversary middle servers to assign as adversaries.")
-    parser.add_argument("--intermediate-finetuning", type=int, default=0,
-                        help="Finetune the FL models for n episodes prior to testing")
     parser.add_argument("--server-aggregator", type=str, default="fedavg",
                         help="Aggregation algorithm to use at the FL server.")
     parser.add_argument("--middle-server-aggregator", type=str, default="fedavg",
@@ -198,7 +195,6 @@ if __name__ == "__main__":
         args.batch_size,
         server_aggregator=args.server_aggregator,
         middle_server_aggregator=args.middle_server_aggregator,
-        intermediate_finetuning=args.intermediate_finetuning,
         attack=args.attack,
         pct_adversaries=args.pct_adversaries,
         pct_saturation=args.pct_saturation,
@@ -209,8 +205,9 @@ if __name__ == "__main__":
     cs = train(server, args.episodes, args.timesteps, args.batch_size, args.forecast_window, drop_episode)
 
     logger.info("Testing the trained model.")
+    args_dict = vars(args)
     header, results = test(
-        server, args.episodes, args.timesteps, args.forecast_window, cs, vars(args)
+        server, args.episodes, args.timesteps, args.forecast_window, cs, args_dict
     )
 
     # Record the results
@@ -221,6 +218,15 @@ if __name__ == "__main__":
             f.write(header + "\n")
     with open(filename, 'a') as f:
         f.write(results + "\n")
-    print(f"Results written to {filename}")
+    logger.info(f"Results written to {filename}")
 
-    print(f"Experiment took {time.time() - start_time} seconds")
+    logger.info("Evaluating with finetuning...")
+    args_dict["server_aggregator"] += " IF"
+    _, results = test(
+        server, args.episodes, args.timesteps, args.forecast_window, cs, args_dict, finetune_episodes=5
+    )
+    with open(filename, 'a') as f:
+        f.write(results + "\n")
+    logger.info(f"Results written to {filename}")
+
+    logger.info(f"Experiment took {time.time() - start_time} seconds")
