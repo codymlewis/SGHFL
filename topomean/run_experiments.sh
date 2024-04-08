@@ -13,9 +13,15 @@ for padversaries in $(seq 0.0 0.1 0.5); do
     python sensitivity.py --e2 "$e2" --attack shifted_random --padversaries "$padversaries"
   done
 
-  # Finally, we evaluate K against number of shifted random adversaries
-  for K in $(seq 0.1 0.1 1.0); do
-    python sensitivity.py --K "$K" --padversaries "$padversaries" --attack shifted_random
+  # Next, we evaluate c against number of shifted random adversaries
+  for c in $(seq 0.1 0.1 1.0); do
+    python sensitivity.py --c "$c" --padversaries "$padversaries" --attack shifted_random
+  done
+
+  # Finally, we evaluate various overlap scaling functions
+  for osf in "non-overlap" "overlap" "chi-overlap" "chi-non-overlap" "distances" "similarities" "density" "none"; do
+    python sensitivity.py --overlap-scaling-function "$osf" --padversaries "$padversaries" --attack lie
+    python sensitivity.py --overlap-scaling-function "$osf" --padversaries "$padversaries" --attack shifted_random
   done
 done
 

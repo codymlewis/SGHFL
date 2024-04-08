@@ -22,7 +22,9 @@ if __name__ == "__main__":
                         help="Proportion of points to assign as adversarial.")
     parser.add_argument("--e1", type=float, default=0.01, help="e1 parameter of topomean.")
     parser.add_argument("--e2", type=float, default=0.1, help="e2 parameter of topomean.")
-    parser.add_argument("--K", type=float, default=0.5, help="K parameter of topomean.")
+    parser.add_argument("--c", type=float, default=0.5, help="c parameter of topomean.")
+    parser.add_argument('--overlap-scaling-function', type=str, default="non-overlap",
+                        help="The function to use to scale the influence of centres by in topomean overlap accounting.")
     args = parser.parse_args()
     print(f"Experiment args: {vars(args)}")
 
@@ -45,8 +47,16 @@ if __name__ == "__main__":
                 attack_x = rng.normal(6, np.std(honest_x, 0), (nadversaries, args.dimensions))
                 x = np.concatenate((honest_x, attack_x))
             case "no_attack":
+                additional_x = rng.normal(1, 3, size=(nadversaries, args.dimensions))
+                honest_x = np.concatenate((honest_x, additional_x))
                 x = honest_x
-        agg_mean = aggregators.topomean(x, args.e1, args.e2, args.K)
+        agg_mean = aggregators.topomean(
+            x,
+            e1=args.e1,
+            e2=args.e2,
+            c=args.c,
+            overlap_scaling_fn_name=args.overlap_scaling_function,
+        )
         honest_mean = honest_x.mean(0)
         full_mean = x.mean(0)
         errors[r] = np.linalg.norm(honest_mean - agg_mean)

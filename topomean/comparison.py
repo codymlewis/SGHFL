@@ -22,15 +22,20 @@ if __name__ == "__main__":
     start_time = time.time()
     rng = np.random.default_rng(args.seed)
     nadversaries = round(args.npoints * args.padversaries)
-    attack = "no_attack" if nadversaries <= 0 else args.attack
+    attack = "no_attack" if nadversaries <= 0 else "shifted_random"
     dimensions = 2
 
     errors = np.zeros(args.repetitions)
     improvements = np.zeros(args.repetitions)
     for r in (pbar := trange(args.repetitions)):
         honest_x = rng.normal(1, 3, size=(args.npoints - nadversaries, dimensions))
-        attack_x = rng.normal(6, np.std(honest_x, 0), (nadversaries, dimensions))
-        x = np.concatenate((honest_x, attack_x))
+        if attack == "shifted_random":
+            attack_x = rng.normal(6, np.std(honest_x, 0), (nadversaries, dimensions))
+            x = np.concatenate((honest_x, attack_x))
+        else:
+            additional_x = rng.normal(1, 3, size=(nadversaries, dimensions))
+            honest_x = np.concatenate((honest_x, additional_x))
+            x = honest_x
         agg_mean = getattr(aggregators, args.aggregator)(x)
         honest_mean = honest_x.mean(0)
         full_mean = x.mean(0)

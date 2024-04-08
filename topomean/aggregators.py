@@ -45,10 +45,11 @@ def topomean(
     samples: npt.NDArray,
     e1: float = 0.01,
     e2: float = 0.1,
-    K: float = 0.5,
+    c: float = 0.5,
     eliminate_close: bool = True,
     take_topomap: bool = True,
     scale_by_overlap: bool = True,
+    overlap_scaling_fn_name: str = "normal"
 ) -> npt.NDArray:
     """
     Assumptions:
@@ -77,7 +78,7 @@ def topomean(
             idx = np.where((mu_dists >= pi * e2 * sigma) & (mu_dists > (pi + 1) * e2 * sigma))
             spike_scores = (dists[idx] < sigma).sum(1)
             if spike_scores.shape[0] > 0:
-                keep_idx = np.where(spike_scores > K * np.max(spike_scores))
+                keep_idx = np.where(spike_scores > c * np.max(spike_scores))
                 sphere_scores.append(spike_scores[keep_idx])
                 sphere_centres.append(samples[keep_idx])
         sphere_centres = np.concatenate(sphere_centres)
@@ -92,9 +93,27 @@ def topomean(
     if scale_by_overlap:
         centre_dists = sp.spatial.distance.cdist(sphere_centres, sphere_centres)
         ts = centre_dists / sigma
-        non_overlap = 1 - sp.stats.norm.cdf(ts).sum(1)
+        match overlap_scaling_fn_name:
+            case "non-overlap":
+                dist_scaler = (1 - sp.stats.norm.cdf(ts)).sum(1)
+            case "overlap":
+                dist_scaler = sp.stats.norm.cdf(ts).sum(1)
+            case "chi-overlap":
+                dist_scaler = sp.stats.chi.cdf(np.sqrt((ts**2).sum(1)), ts.shape[-1])
+            case "chi-non-overlap":
+                dist_scaler = 1 - sp.stats.chi.cdf(np.sqrt((ts**2).sum(1)), ts.shape[-1])
+                if dist_scaler.sum() == 0:
+                    dist_scaler = np.ones_like(sphere_scores)
+            case "distances":
+                dist_scaler = ts.sum(1)
+            case "similarities":
+                dist_scaler = (1 - (ts - ts.min()) / (ts.max() - ts.min())).sum(1)
+            case "density":
+                dist_scaler = np.ones_like(sphere_scores)
+            case "none":
+                dist_scaler = 1 / sphere_scores
         # Use scaled density score to weight the average of the sphere centres
-        p = non_overlap * sphere_scores
+        p = dist_scaler * sphere_scores
     else:
         p = np.ones(len(sphere_centres))
     return np.average(sphere_centres, weights=p / p.sum(), axis=0)

@@ -44,13 +44,15 @@ if __name__ == "__main__":
                 attack_x = rng.normal(6, np.std(honest_x, 0), (nadversaries, dimensions))
                 x = np.concatenate((honest_x, attack_x))
             case "no_attack":
+                additional_x = rng.normal(1, 3, size=(nadversaries, dimensions))
+                honest_x = np.concatenate((honest_x, additional_x))
                 x = honest_x
         if args.aggregator == "topomean":
             agg_mean = aggregators.topomean(
                 x,
                 eliminate_close=args.eliminate_close,
                 take_topomap=args.take_topomap,
-                scale_by_overlap=args.scale_by_overlap
+                scale_by_overlap=args.scale_by_overlap,
             )
         else:
             agg_mean = getattr(aggregators, args.aggregator)(x)
