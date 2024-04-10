@@ -76,13 +76,13 @@ def topomean(
         # Find the densest points in each peak ring and add to sphere centres, use in proceeding part
         # TODO: Try rewriting so samples indices are recorded at the end.
         for pi in peak_indices:
-            idx = np.where((mu_dists >= pi * e2 * sigma) & (mu_dists > (pi + 1) * e2 * sigma))
+            idx = np.where((mu_dists >= pi * e2 * sigma) & (mu_dists > (pi + 1) * e2 * sigma))[0]
             spike_scores = (dists[idx] < sigma).sum(1)
             k = round(c * len(spike_scores))
             if spike_scores.shape[0] > 0:
                 keep_idx = np.argpartition(np.abs(spike_scores - np.max(spike_scores)), k)[:k]
                 sphere_scores.append(spike_scores[keep_idx])
-                sphere_centres.append(samples[keep_idx])
+                sphere_centres.append(samples[idx][keep_idx])
         sphere_centres = np.concatenate(sphere_centres)
         sphere_scores = np.concatenate(sphere_scores)
         sphere_centres, sci = np.unique(sphere_centres, return_index=True, axis=0)
