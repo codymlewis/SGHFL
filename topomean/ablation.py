@@ -25,6 +25,7 @@ if __name__ == "__main__":
     print(f"Experiment args: {vars(args)}")
     npoints = 1000
     dimensions = 2
+    attack = args.attack if args.padversaries > 0.0 else "no_attack"
 
     start_time = time.time()
     rng = np.random.default_rng(args.seed)
@@ -34,7 +35,7 @@ if __name__ == "__main__":
     improvements = np.zeros(args.repetitions)
     for r in (pbar := trange(args.repetitions)):
         honest_x = rng.normal(1, 3, size=(npoints - nadversaries, dimensions))
-        match args.attack:
+        match attack:
             case "lie":
                 s = npoints // 2 + 1 - nadversaries
                 zmax = sp.stats.norm.ppf((npoints - s) / npoints)
@@ -59,7 +60,7 @@ if __name__ == "__main__":
         honest_mean = honest_x.mean(0)
         full_mean = x.mean(0)
         errors[r] = np.linalg.norm(honest_mean - agg_mean)
-        if args.attack == "no_attack":
+        if attack == "no_attack":
             improvements[r] = 0.0
         else:
             improvements[r] = 1 - errors[r] / np.linalg.norm(honest_mean - full_mean)

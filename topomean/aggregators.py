@@ -49,7 +49,7 @@ def topomean(
     eliminate_close: bool = True,
     take_topomap: bool = True,
     scale_by_overlap: bool = True,
-    overlap_scaling_fn_name: str = "non-overalap"
+    overlap_scaling_fn_name: str = "non-overlap"
 ) -> npt.NDArray:
     """
     Assumptions:
