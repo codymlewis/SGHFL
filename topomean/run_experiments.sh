@@ -14,7 +14,7 @@ for padversaries in $(seq 0.0 0.1 0.5); do
   done
 
   # Next, we evaluate c against number of shifted random adversaries
-  for c in $(seq 0.1 0.1 1.0); do
+  for c in $(seq 0.1 0.1 0.9); do
     python sensitivity.py --c "$c" --padversaries "$padversaries" --attack shifted_random
   done
 

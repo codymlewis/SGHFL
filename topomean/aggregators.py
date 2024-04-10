@@ -45,7 +45,7 @@ def topomean(
     samples: npt.NDArray,
     e1: float = 0.01,
     e2: float = 0.1,
-    c: float = 0.5,
+    c: float = 0.1,
     eliminate_close: bool = True,
     take_topomap: bool = True,
     scale_by_overlap: bool = True,
@@ -74,6 +74,7 @@ def topomean(
         sphere_centres = [np.array([samples.mean(0)])]
         sphere_scores = [np.array([(mu_dists < sigma).sum()])]
         # Find the densest points in each peak ring and add to sphere centres, use in proceeding part
+        # TODO: Try rewriting so samples indices are recorded at the end.
         for pi in peak_indices:
             idx = np.where((mu_dists >= pi * e2 * sigma) & (mu_dists > (pi + 1) * e2 * sigma))
             spike_scores = (dists[idx] < sigma).sum(1)
