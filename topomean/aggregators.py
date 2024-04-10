@@ -49,7 +49,7 @@ def topomean(
     eliminate_close: bool = True,
     take_topomap: bool = True,
     scale_by_overlap: bool = True,
-    overlap_scaling_fn_name: str = "normal"
+    overlap_scaling_fn_name: str = "non-overalap"
 ) -> npt.NDArray:
     """
     Assumptions:
@@ -77,8 +77,9 @@ def topomean(
         for pi in peak_indices:
             idx = np.where((mu_dists >= pi * e2 * sigma) & (mu_dists > (pi + 1) * e2 * sigma))
             spike_scores = (dists[idx] < sigma).sum(1)
+            k = round(c * len(spike_scores))
             if spike_scores.shape[0] > 0:
-                keep_idx = np.where(spike_scores > c * np.max(spike_scores))
+                keep_idx = np.argpartition(np.abs(spike_scores - np.max(spike_scores)), k)[:k]
                 sphere_scores.append(spike_scores[keep_idx])
                 sphere_centres.append(samples[keep_idx])
         sphere_centres = np.concatenate(sphere_centres)
@@ -110,7 +111,7 @@ def topomean(
                 dist_scaler = (1 - (ts - ts.min()) / (ts.max() - ts.min())).sum(1)
             case "density":
                 dist_scaler = np.ones_like(sphere_scores)
-            case "none":
+            case _:
                 dist_scaler = 1 / sphere_scores
         # Use scaled density score to weight the average of the sphere centres
         p = dist_scaler * sphere_scores
