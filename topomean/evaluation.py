@@ -17,6 +17,8 @@ def process_label(label: str | int | float) -> str:
             return "Points"
         case "trmean":
             return "TrMean"
+        case "ssfgm":
+            return "SSFGM"
     return label.title()
 
 
@@ -60,29 +62,19 @@ if __name__ == "__main__":
     sensitivity_data = pd.read_csv("results/sensitivity.csv")
     sensitivity_data = sensitivity_data.drop_duplicates()
 
-    e1_data = sensitivity_data.query("`attack` == 'lie'")
-    e1_data = e1_data.drop(
-        columns=["attack", "seed", "repetitions", "npoints", "dimensions", "e2", "c", "overlap_scaling_function"]
+    r_data = sensitivity_data.query("`attack` == 'lie'")
+    r_data = r_data.drop(
+        columns=["attack", "seed", "repetitions", "npoints", "dimensions", "c"]
     )
-    print("e1 data")
-    print_latex(e1_data.corr())
-    create_plot(e1_data, "e1", "error", "padversaries", "e1_err.pdf")
-    create_plot(e1_data, "e1", "improvement", "padversaries", "e1_imp.pdf")
+    print("r data")
+    print_latex(r_data.corr())
+    create_plot(r_data, "r", "error", "padversaries", "r_err.pdf")
+    create_plot(r_data, "r", "improvement", "padversaries", "r_imp.pdf")
     print()
 
-    e2_data = sensitivity_data.query("`attack` == 'shifted_random' and `e1` == 0.01 and `c` == 0.5")
-    e2_data = e2_data.drop(
-        columns=["attack", "seed", "repetitions", "npoints", "e1", "c", "dimensions", "overlap_scaling_function"]
-    )
-    print("e2 data:")
-    print_latex(e2_data.corr())
-    create_plot(e2_data, "e2", "error", "padversaries", "e2_err.pdf")
-    create_plot(e2_data, "e2", "improvement", "padversaries", "e2_imp.pdf")
-    print()
-
-    c_data = sensitivity_data.query("`attack` == 'shifted_random' and `e1` == 0.01 and `e2` == 0.1")
+    c_data = sensitivity_data.query("`attack` == 'shifted_random' and `r` == 0.01")
     c_data = c_data.drop(
-        columns=["attack", "seed", "repetitions", "npoints", "e1", "e2", "dimensions", "overlap_scaling_function"]
+        columns=["attack", "seed", "repetitions", "npoints", "r", "dimensions"]
     )
     print("c data:")
     print_latex(c_data.corr())
@@ -90,24 +82,8 @@ if __name__ == "__main__":
     create_plot(c_data, "c", "improvement", "padversaries", "c_imp.pdf")
     print()
 
-    osf_sr_data = sensitivity_data.query("`attack` == 'shifted_random' and `e1` == 0.01 and `e2` == 0.1 and `c` == 0.5")
-    osf_sr_data = osf_sr_data.drop(
-        columns=["attack", "seed", "repetitions", "npoints", "e1", "e2", "c", "dimensions"]
-    )
-    create_plot(osf_sr_data, "padversaries", "error", "overlap_scaling_function", "osf_sr_err.pdf")
-    create_plot(osf_sr_data, "padversaries", "improvement", "overlap_scaling_function", "osf_sr_imp.pdf")
-    print()
-
-    osf_lie_data = sensitivity_data.query("`attack` == 'lie' and `e1` == 0.01 and `e2` == 0.1 and `c` == 0.5")
-    osf_lie_data = osf_lie_data.drop(
-        columns=["attack", "seed", "repetitions", "npoints", "e1", "e2", "c", "dimensions"]
-    )
-    create_plot(osf_lie_data, "padversaries", "error", "overlap_scaling_function", "osf_lie_err.pdf")
-    create_plot(osf_lie_data, "padversaries", "improvement", "overlap_scaling_function", "osf_lie_imp.pdf")
-    print()
-
     ablation_data = pd.read_csv("results/ablation.csv")
-    ablation_data = ablation_data.query("`aggregator` == 'topomean'")
+    ablation_data = ablation_data.query("`aggregator` == 'ssfgm'")
     ablation_data = ablation_data.drop(columns=['seed', 'repetitions', 'aggregator'])
     print("10% Adversaries ablation:")
     print_latex(ablation_data.query("`padversaries` == 0.1").drop(columns="padversaries"), hide_index=True)

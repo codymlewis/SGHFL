@@ -10,7 +10,7 @@ import aggregators
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Topomean synthetic testbed program evaluating hyperparameter sensitivity."
+        description="SSFGM synthetic testbed program evaluating hyperparameter sensitivity."
     )
     parser.add_argument('-s', '--seed', type=int, default=14258, help="Initial seed for the experiments.")
     parser.add_argument('-r', '--repetitions', type=int, default=1000,
@@ -20,11 +20,8 @@ if __name__ == "__main__":
     parser.add_argument('-a', '--attack', type=str, default="shifted_random", help="Type of attack to perform.")
     parser.add_argument('-p', '--padversaries', type=float, default=0.4,
                         help="Proportion of points to assign as adversarial.")
-    parser.add_argument("--e1", type=float, default=0.01, help="e1 parameter of topomean.")
-    parser.add_argument("--e2", type=float, default=0.1, help="e2 parameter of topomean.")
-    parser.add_argument("--c", type=float, default=0.5, help="c parameter of topomean.")
-    parser.add_argument('--overlap-scaling-function', type=str, default="non-overlap",
-                        help="The function to use to scale the influence of centres by in topomean overlap accounting.")
+    parser.add_argument("--r", type=float, default=0.01, help="r parameter of ssfgm.")
+    parser.add_argument("--c", type=float, default=0.8, help="c parameter of ssfgm.")
     args = parser.parse_args()
     print(f"Experiment args: {vars(args)}")
 
@@ -50,12 +47,10 @@ if __name__ == "__main__":
                 additional_x = rng.normal(1, 3, size=(nadversaries, args.dimensions))
                 honest_x = np.concatenate((honest_x, additional_x))
                 x = honest_x
-        agg_mean = aggregators.topomean(
+        agg_mean = aggregators.ssfgm(
             x,
-            e1=args.e1,
-            e2=args.e2,
+            r=args.r,
             c=args.c,
-            overlap_scaling_fn_name=args.overlap_scaling_function,
         )
         honest_mean = honest_x.mean(0)
         full_mean = x.mean(0)

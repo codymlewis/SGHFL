@@ -10,17 +10,16 @@ import aggregators
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Topomean synthetic testbed program ablating the algorithm."
+        description="SSFGM synthetic testbed program ablating the algorithm."
     )
     parser.add_argument('-s', '--seed', type=int, default=14258, help="Initial seed for the experiments.")
     parser.add_argument('-r', '--repetitions', type=int, default=1000,
                         help="Number of times to repeat the experiment")
     parser.add_argument('-a', '--attack', type=str, default="shifted_random", help="Type of attack to perform.")
-    parser.add_argument("--eliminate-close", action="store_true")
-    parser.add_argument("--take-topomap", action="store_true")
-    parser.add_argument("--scale-by-overlap", action="store_true")
+    parser.add_argument("--space-sampling", action="store_true")
+    parser.add_argument("--fractional-geomedian", action="store_true")
     parser.add_argument("--padversaries", type=float, default=0.4, help="Proportion of adversaries.")
-    parser.add_argument("--aggregator", type=str, default="topomean", help="Aggregation algorithm to evaluate.")
+    parser.add_argument("--aggregator", type=str, default="ssfgm", help="Aggregation algorithm to evaluate.")
     args = parser.parse_args()
     print(f"Experiment args: {vars(args)}")
     npoints = 1000
@@ -48,12 +47,11 @@ if __name__ == "__main__":
                 additional_x = rng.normal(1, 3, size=(nadversaries, dimensions))
                 honest_x = np.concatenate((honest_x, additional_x))
                 x = honest_x
-        if args.aggregator == "topomean":
-            agg_mean = aggregators.topomean(
+        if args.aggregator == "ssfgm":
+            agg_mean = aggregators.ssfgm(
                 x,
-                eliminate_close=args.eliminate_close,
-                take_topomap=args.take_topomap,
-                scale_by_overlap=args.scale_by_overlap,
+                space_sampling=args.space_sampling,
+                fractional_geomedian=args.fractional_geomedian,
             )
         else:
             agg_mean = getattr(aggregators, args.aggregator)(x)

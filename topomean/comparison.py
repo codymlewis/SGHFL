@@ -8,14 +8,14 @@ import aggregators
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Topomean synthetic testbed comparing aggregation rules.")
+    parser = argparse.ArgumentParser(description="ssfgm synthetic testbed comparing aggregation rules.")
     parser.add_argument('-s', '--seed', type=int, default=14258, help="Initial seed for the experiments.")
     parser.add_argument('-r', '--repetitions', type=int, default=1000,
                         help="Number of times to repeat the experiment")
     parser.add_argument('-n', '--npoints', type=int, default=1000, help="Number of points to evaluate for.")
     parser.add_argument('-p', '--padversaries', type=float, default=0.4,
                         help="Proportion of points to assign as adversarial.")
-    parser.add_argument("-g", "--aggregator", type=str, default="topomean", help="Aggregation algorithm to use.")
+    parser.add_argument("-g", "--aggregator", type=str, default="ssfgm", help="Aggregation algorithm to use.")
     args = parser.parse_args()
     print(f"Experiment args: {vars(args)}")
 
