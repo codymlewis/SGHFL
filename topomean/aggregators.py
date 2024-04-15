@@ -1,6 +1,7 @@
 import numpy as np
 import numpy.typing as npt
 import scipy as sp
+import matplotlib.pyplot as plt
 
 
 def mean(samples: npt.NDArray) -> npt.NDArray:
@@ -44,8 +45,6 @@ def phocas(samples: npt.NDArray, c: float = 0.5) -> npt.NDArray:
 def ssfgm(
     samples: npt.NDArray,
     r: float = 0.01,
-    # e1: float = 0.1,
-    c: float = 0.8,
     space_sampling: bool = True,
     fractional_geomedian: bool = True,
 ) -> npt.NDArray:
@@ -60,21 +59,14 @@ def ssfgm(
         sigma = np.std(samples)
         far_enough_idx = np.all((dists + (np.eye(len(samples)) * r * sigma)) >= (r * sigma), axis=0)
         samples = samples[far_enough_idx]
-    # Perform the fractional geometric median
     if fractional_geomedian:
-        # mu = np.mean(samples, axis=0)
-        # sigma = np.std(samples)
-        # mu_dists = np.linalg.norm(samples - mu, axis=1)
-        # sonar = np.array([
-        #     np.sum((mu_dists <= i * e1 * sigma) & (mu_dists > (i - 1) * e1 * sigma))
-        #     for i in range(1, round(3 / 0.1))
-        # ])
-        # c = 1 - np.sum((sonar[1:-1] >= sonar[2:]) & (sonar[1:-1] > sonar[:-2])) / len(sonar)
-        # print(f"{c=}")
+        mu_dist = np.mean(np.linalg.norm(samples - np.mean(samples, axis=0), axis=1))
+        sigma = np.std(samples)
+        c = min(mu_dist, sigma) / max(mu_dist, sigma)
         k = round(len(samples) * c) - 1
         return sp.optimize.minimize(
             lambda x: np.sum(np.partition(np.linalg.norm(samples - x, axis=1), k)[:k]),
-            np.mean(samples, axis=0)
+            x0=np.mean(samples, axis=0),
         ).x
     else:
         return np.mean(samples, axis=0)
