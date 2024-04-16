@@ -19,6 +19,10 @@ def process_label(label: str | int | float) -> str:
             return "TrMean"
         case "ssfgm":
             return "SSFGM"
+        case "r":
+            return "$r$"
+        case "c":
+            return "$C$"
     return label.title()
 
 
@@ -64,22 +68,12 @@ if __name__ == "__main__":
 
     r_data = sensitivity_data.query("`attack` == 'lie'")
     r_data = r_data.drop(
-        columns=["attack", "seed", "repetitions", "npoints", "dimensions", "c"]
+        columns=["attack", "seed", "repetitions", "npoints", "dimensions"]
     )
     print("r data")
     print_latex(r_data.corr())
     create_plot(r_data, "r", "error", "padversaries", "r_err.pdf")
     create_plot(r_data, "r", "improvement", "padversaries", "r_imp.pdf")
-    print()
-
-    c_data = sensitivity_data.query("`attack` == 'shifted_random' and `r` == 0.01")
-    c_data = c_data.drop(
-        columns=["attack", "seed", "repetitions", "npoints", "r", "dimensions"]
-    )
-    print("c data:")
-    print_latex(c_data.corr())
-    create_plot(c_data, "c", "error", "padversaries", "c_err.pdf")
-    create_plot(c_data, "c", "improvement", "padversaries", "c_imp.pdf")
     print()
 
     ablation_data = pd.read_csv("results/ablation.csv")

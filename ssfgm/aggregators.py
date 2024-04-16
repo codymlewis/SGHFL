@@ -52,6 +52,7 @@ def ssfgm(
     Assumptions:
     - Attacking clients are in the minority
     - Updates are i.i.d.
+    - Most updates are closer to the honest mean than the target
     """
     # Eliminate samples that are too close to eachother, leaving only one representative
     dists = sp.spatial.distance.cdist(samples, samples)
@@ -60,9 +61,7 @@ def ssfgm(
         far_enough_idx = np.all((dists + (np.eye(len(samples)) * r * sigma)) >= (r * sigma), axis=0)
         samples = samples[far_enough_idx]
     if fractional_geomedian:
-        mu_dist = np.mean(np.linalg.norm(samples - np.mean(samples, axis=0), axis=1))
-        sigma = np.std(samples)
-        c = min(mu_dist, sigma) / max(mu_dist, sigma)
+        c = min(1.0, np.sqrt(3.0 / 5.0) / np.abs(np.median(samples) - np.mean(samples) / np.std(samples)))
         k = round(len(samples) * c) - 1
         return sp.optimize.minimize(
             lambda x: np.sum(np.partition(np.linalg.norm(samples - x, axis=1), k)[:k]),
