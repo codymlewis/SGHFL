@@ -61,7 +61,13 @@ def ssfgm(
         far_enough_idx = np.all((dists + (np.eye(len(samples)) * r * sigma)) >= (r * sigma), axis=0)
         samples = samples[far_enough_idx]
     if fractional_geomedian:
-        c = min(1.0, np.sqrt(3.0 / 5.0) / np.abs(np.median(samples) - np.mean(samples) / np.std(samples)))
+        c = min(
+            1.0,
+            np.mean(
+                np.sqrt(0.6) /
+                np.abs(np.median(samples, axis=0) - np.mean(samples, axis=0) / np.std(samples, axis=0)),
+            )
+        )
         k = round(len(samples) * c) - 1
         return sp.optimize.minimize(
             lambda x: np.sum(np.partition(np.linalg.norm(samples - x, axis=1), k)[:k]),
