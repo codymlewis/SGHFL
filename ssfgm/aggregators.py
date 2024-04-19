@@ -1,7 +1,6 @@
 import numpy as np
 import numpy.typing as npt
 import scipy as sp
-import matplotlib.pyplot as plt
 
 
 def mean(samples: npt.NDArray) -> npt.NDArray:
@@ -45,6 +44,7 @@ def phocas(samples: npt.NDArray, c: float = 0.5) -> npt.NDArray:
 def ssfgm(
     samples: npt.NDArray,
     r: float = 0.01,
+    gamma: float = 30,
     space_sampling: bool = True,
     fractional_geomedian: bool = True,
 ) -> npt.NDArray:
@@ -54,12 +54,15 @@ def ssfgm(
     - Updates are i.i.d.
     - Most updates are closer to the honest mean than the target
     """
+    # Clip the updates
+    assert gamma < 1 / r, "Such large clipping value will leave this algorithm vulnerable to attack."
+    samples = (samples.T * np.minimum(1, gamma / np.linalg.norm(samples, axis=-1))).T
     # Eliminate samples that are too close to eachother, leaving only one representative
     dists = sp.spatial.distance.cdist(samples, samples)
     if space_sampling:
         sigma = np.std(samples)
         far_enough_idx = np.all((dists + (np.eye(len(samples)) * r * sigma)) >= (r * sigma), axis=0)
-        samples = samples[far_enough_idx]
+        samples = np.concatenate((samples[far_enough_idx], np.mean(samples[~far_enough_idx], axis=0).reshape(1, -1)))
     if fractional_geomedian:
         c = min(
             1.0,
