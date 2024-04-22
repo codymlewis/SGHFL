@@ -34,10 +34,15 @@ def learner_step(
     state: train_state.TrainState,
     X: chex.Array,
     Y: chex.Array,
+    delta: float = 1.0,
 ) -> Tuple[float, train_state.TrainState]:
     def loss_fn(params):
         predictions = state.apply_fn(params, X)
-        return jnp.mean(0.5 * (predictions - Y)**2)
+        return jnp.mean(jnp.where(
+            jnp.abs(predictions - Y) < delta,
+            0.5 * (predictions - Y)**2,
+            delta * (jnp.abs(predictions - Y) - 0.5 * delta)
+        ))
 
     loss, grads = jax.value_and_grad(loss_fn)(state.params)
     state = state.apply_gradients(grads=grads)
@@ -348,7 +353,6 @@ class Server:
         model,
         global_params,
         clients,
-        rounds,
         batch_size,
         aggregator="fedavg",
     ):
@@ -356,7 +360,6 @@ class Server:
         self.global_params = global_params
         self.clients = clients
         self.all_clients = clients.copy()  # To maintain track of clients after dropping
-        self.rounds = rounds
         self.batch_size = batch_size
         self.aggregate = get_aggregator(aggregator, global_params)
 
@@ -364,11 +367,11 @@ class Server:
         for client in self.clients:
             client.reset()
 
-    def setup_test(self, finetune_episodes=0):
+    def setup_test(self, finetune_steps=0):
         client_list = self.clients if not hasattr(self, "all_clients") else self.all_clients
         for client in client_list:
             client.set_params(self.global_params)
-            for _ in range(finetune_episodes):
+            for _ in range(finetune_steps):
                 client.step(self.global_params, self.batch_size)
             client.reset()
 
@@ -403,12 +406,9 @@ class Server:
         return true_forecasts, predicted_forecasts, d_true_forecasts, d_predicted_forecasts
 
     def step(self):
-        logger.info("Server is starting federated training of the forecast model")
-        for _ in range(self.rounds):
-            all_losses, all_grads = self.inner_step()
-            self.global_params = tree_add(self.global_params, self.aggregate(all_grads))
-        logger.info(f"Done. FL Server Loss: {np.mean(all_losses):.5f}")
-        return cosine_similarity(self.global_params, all_grads)
+        all_losses, all_grads = self.inner_step()
+        self.global_params = tree_add(self.global_params, self.aggregate(all_grads))
+        return cosine_similarity(self.global_params, all_grads), all_losses
 
     def inner_step(self):
         all_grads = []
@@ -419,6 +419,13 @@ class Server:
             all_grads.append(grads)
             all_losses.append(loss)
         return all_losses, all_grads
+
+    def finetune(self, finetune_steps):
+        client_list = self.clients if not hasattr(self, "all_clients") else self.all_clients
+        for client in client_list:
+            client.set_params(self.global_params)
+            for _ in range(finetune_steps):
+                client.step(self.global_params, self.batch_size)
 
     def drop_clients(self):
         logger.info("Dropping clients")

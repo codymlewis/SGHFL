@@ -42,7 +42,6 @@ def get_adversary_class(attack, nclients):
 def l2rpn_setup(
     num_episodes,
     forecast_window,
-    rounds,
     batch_size,
     server_aggregator="fedavg",
     middle_server_aggregator="fedavg",
@@ -55,7 +54,7 @@ def l2rpn_setup(
     num_middle_servers = 10
     forecast_model = fl.ForecastNet()
     global_params = forecast_model.init(jax.random.PRNGKey(seed), jnp.zeros((1, 2 * forecast_window + 2)))
-    substation_data = load_file('../data/l2rpn_substation.safetensors'),
+    substation_data = load_file('../data/l2rpn_substation.safetensors')
     substation_ids = substation_data['ids']
     adversary_type = get_adversary_class(attack, len(substation_ids))
     middle_servers = [
@@ -81,7 +80,6 @@ def l2rpn_setup(
         forecast_model,
         global_params,
         middle_servers,
-        rounds,
         batch_size,
         aggregator=server_aggregator,
     )
@@ -89,7 +87,6 @@ def l2rpn_setup(
 
 
 def power_setup(
-    rounds,
     batch_size,
     client_data,
     regions,
@@ -121,7 +118,6 @@ def power_setup(
         forecast_model,
         global_params,
         middle_servers,
-        rounds,
         batch_size,
         aggregator=server_aggregator,
     )
@@ -132,6 +128,7 @@ def l2rpn_train(
     server: fl.Server,
     episodes: int,
     timesteps: int,
+    rounds: int,
     batch_size: int,
     forecast_window: int,
     drop_episode: int,
@@ -145,7 +142,9 @@ def l2rpn_train(
             obs_time = training_data[f"E{e}T{t}:time"]
             server.add_data(obs_load_p, obs_gen_p, obs_time)
         if (e + 1) * timesteps > (batch_size + forecast_window):
-            cs = server.step()
+            for _ in range(rounds):
+                cs, all_losses = server.step()
+            logger.info(f"Global loss at episode {e + 1}: {np.mean(all_losses):.5f}")
         if e == drop_episode - 1:
             server.drop_clients()
     return cs
@@ -153,7 +152,8 @@ def l2rpn_train(
 
 def power_train(server: fl.Server, rounds: int, drop_round: int) -> float:
     for r in trange(rounds):
-        cs = server.step()
+        cs, all_losses = server.step()
+        logger.info(f"Global loss at round {r + 1}: {np.mean(all_losses):.5f}")
         if r == drop_round - 1:
             server.drop_clients()
     return cs
@@ -166,10 +166,10 @@ def l2rpn_test(
     forecast_window: int,
     cs: float,
     args_dict: Dict[str, str | int | float | bool],
-    finetune_episodes: int = 0,
+    finetune_steps: int = 0,
 ) -> Tuple[str, str]:
     testing_data = load_file('../data/l2rpn_testing.safetensors')
-    server.setup_test(finetune_episodes=finetune_episodes)
+    server.setup_test(finetune_steps=finetune_steps)
     client_forecasts, true_forecasts = [], []
     dropped_cfs, dropped_tfs = [], []
     for e in trange(episodes):
@@ -219,10 +219,9 @@ def power_test(
     Y_test,
     cs: float,
     args_dict: Dict[str, str | int | float | bool],
-    finetune_rounds: int = 0,
+    finetune_steps: int = 0,
 ) -> Tuple[str, str]:
-    for _ in range(finetune_rounds):
-        server.step()
+    server.finetune(finetune_steps)
     mae, res_sum_squares, total_sum_squares = 0.0, 0.0, 0.0
     nclients = 0
     for client in server.clients:
@@ -292,7 +291,6 @@ if __name__ == "__main__":
         server = l2rpn_setup(
             args.episodes,
             args.forecast_window,
-            args.rounds,
             args.batch_size,
             server_aggregator=args.server_aggregator,
             middle_server_aggregator=args.middle_server_aggregator,
@@ -304,7 +302,6 @@ if __name__ == "__main__":
     else:
         client_data, X_test, Y_test = data_manager.load_data(args.dataset)
         server = power_setup(
-            args.rounds,
             args.batch_size,
             client_data,
             data_manager.load_regions(args.dataset),
@@ -318,7 +315,9 @@ if __name__ == "__main__":
     num_clients = server.num_clients
 
     if args.dataset == "l2rpn":
-        cs = l2rpn_train(server, args.episodes, args.timesteps, args.batch_size, args.forecast_window, drop_episode)
+        cs = l2rpn_train(
+            server, args.episodes, args.timesteps, args.rounds, args.batch_size, args.forecast_window, drop_episode
+        )
     else:
         cs = power_train(server, args.rounds, drop_episode)
 
@@ -344,10 +343,10 @@ if __name__ == "__main__":
     args_dict["server_aggregator"] += " IF"
     if args.dataset == "l2rpn":
         _, results = l2rpn_test(
-            server, args.episodes, args.timesteps, args.forecast_window, cs, args_dict, finetune_episodes=5
+            server, args.episodes, args.timesteps, args.forecast_window, cs, args_dict, finetune_steps=5
         )
     else:
-        _, results = power_test(server, X_test, Y_test, cs, args_dict, finetune_rounds=5)
+        _, results = power_test(server, X_test, Y_test, cs, args_dict, finetune_steps=5)
     with open(filename, 'a') as f:
         f.write(results + "\n")
     logger.info(f"Results written to {filename}")
