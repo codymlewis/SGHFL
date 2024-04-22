@@ -9,14 +9,15 @@ import chex
 import flax.linen as nn
 from flax.training import train_state
 import optax
-import kmeans
 from sklearn import metrics
 
+import data_manager
 from logger import logger
 
 
 class ForecastNet(nn.Module):
     "Neural network for predicting future power load and generation"
+    classes: int = 2
 
     @nn.compact
     def __call__(self, x):
@@ -24,30 +25,8 @@ class ForecastNet(nn.Module):
         x = nn.relu(x)
         x = nn.Dense(6)(x)
         x = nn.relu(x)
-        x = nn.Dense(2)(x)
+        x = nn.Dense(self.classes)(x)
         return x
-
-
-class ForecastBatch:
-    def __init__(self, X: chex.Array, Y: chex.Array, index: int):
-        self.X = X
-        self.Y = Y
-        self.i = index
-
-    def create(dataset_size: int, forecast_window: int) -> ForecastBatch:
-        return ForecastBatch(
-            np.zeros((dataset_size, 2 * forecast_window + 2)),
-            np.zeros((dataset_size, 2)),
-            0
-        )
-
-    def add(self, x, y):
-        self.i = (self.i + 1) % self.Y.shape[0]
-        self.X[self.i] = x
-        self.Y[self.i] = y
-
-    def __len__(self) -> int:
-        return min(self.i, self.Y.shape[0])
 
 
 @jax.jit
@@ -132,9 +111,35 @@ def geomedian(all_params):
 
 
 @jax.jit
-def centre(all_params):
-    nclusters = len(all_params) // 2 + 1
-    return jax.tree_util.tree_map(lambda *x: kmeans.fit(jnp.array(x), nclusters)['centroids'].mean(axis=0), *all_params)
+def ssfgm(all_params, r: float = 0.01, gamma: float = 30):
+    """
+    Assumptions:
+    - Attacking clients are in the minority
+    - Updates are i.i.d.
+    - Most updates are closer to the honest mean than the target
+    """
+    # Clip the updates
+    X = jnp.array([jax.flatten_util.ravel_pytree(p)[0] for p in all_params])
+    unflattener = jax.flatten_util.ravel_pytree(all_params[0])[1]
+    X = (X.T * jnp.minimum(1, gamma / jnp.linalg.norm(X, axis=-1))).T
+    # Eliminate samples that are too close to eachother, leaving only one representative
+    dists = jnp.sum(X**2, axis=1)[:, None] + jnp.sum(X**2, axis=1)[None] - 2 * jnp.dot(X, X.T)
+    sigma = jnp.std(X)
+    far_enough_idx = jnp.all((dists + (jnp.eye(X.shape[0]) * r * sigma)) >= (r * sigma), axis=0)
+    X = jnp.concatenate((X[far_enough_idx], np.mean(X[~far_enough_idx], axis=0).reshape(1, -1)))
+    c = min(
+        1.0,
+        jnp.mean(
+            jnp.sqrt(0.6) /
+            jnp.abs(jnp.median(X, axis=0) - jnp.mean(X, axis=0) / jnp.std(X, axis=0)),
+        )
+    )
+    k = round(X.shape[0] * c) - 1
+    return unflattener(jspo.minimize(
+        lambda x: jnp.sum(jnp.partition(jnp.linalg.norm(X - x, axis=1), k)[:k]),
+        x0=np.mean(X, axis=0),
+        method="BFGS",
+    ).x)
 
 
 class KickbackMomentum:
@@ -272,18 +277,23 @@ def get_aggregator(aggregator, params=None):
 
 
 class Client:
-    def __init__(self, client_id, model, load_id, gen_id, num_episodes, forecast_window, buffer_size: int = 1000, seed=0):
-        self.past_load = collections.deque([], maxlen=forecast_window)
-        self.past_gen = collections.deque([], maxlen=forecast_window)
-        self.data = ForecastBatch.create(num_episodes * buffer_size, forecast_window)
+    def __init__(self, client_id, model, info=None, data=None, seed=0):
+        assert (info is None) or (data is None), "Either info or data needs to be provided"
+        if info is not None:
+            self.past_load = collections.deque([], maxlen=info['forecast_window'])
+            self.past_gen = collections.deque([], maxlen=info['forecast_window'])
+            buffer_size = info.get("buffer_size") if info.get("buffer_size") is not None else 1000
+            self.data = data_manager.Dataset.online(info['num_episodes'] * buffer_size, info['forecast_window'])
+            self.load_id = info['load_id']
+            self.gen_id = info['gen_id']
+            self.forecast_window = info['forecast_window']
+        if data is not None:
+            self.data = data
         self.state = train_state.TrainState.create(
             apply_fn=model.apply,
             params=model.init(jax.random.PRNGKey(0), self.data.X[:1]),
             tx=optax.adam(0.01),
         )
-        self.load_id = load_id
-        self.gen_id = gen_id
-        self.forecast_window = forecast_window
         self.id = client_id
         self.rng = np.random.default_rng(seed)
 
@@ -462,6 +472,12 @@ class MiddleServer:
         new_params = self.aggregate(all_params)
         new_loss = np.mean(all_losses)
         return new_loss, new_params
+
+    def forecast(self, X_test):
+        predicted_forecasts = []
+        for client in self.clients:
+            predicted_forecasts.append(forecast(client.state, X_test))
+        return predicted_forecasts
 
 
 @jax.jit

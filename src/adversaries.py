@@ -15,10 +15,8 @@ class EmptyUpdater(fl.Client):
 
 
 class Adversary(fl.Client):
-    def __init__(
-        self, client_id, model, load_id, gen_id, num_episodes, forecast_window, corroborator, buffer_size: int = 1000
-    ):
-        super().__init__(client_id, model, load_id, gen_id, num_episodes, forecast_window, buffer_size)
+    def __init__(self, client_id, model, info=None, data=None, seed=0, corroborator=None):
+        super().__init__(client_id, model, info, data, seed)
         self.corroborator = corroborator
         self.corroborator.register(self)
 

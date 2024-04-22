@@ -1,6 +1,7 @@
 import logging
 from tqdm import tqdm
 
+
 logger = logging.getLogger("SmaHFL")
 logger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler()
