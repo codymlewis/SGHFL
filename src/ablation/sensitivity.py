@@ -20,7 +20,7 @@ if __name__ == "__main__":
     parser.add_argument('-a', '--attack', type=str, default="shifted_random", help="Type of attack to perform.")
     parser.add_argument('-p', '--padversaries', type=float, default=0.4,
                         help="Proportion of points to assign as adversarial.")
-    parser.add_argument("--r", type=float, default=0.01, help="r parameter of ssfgm.")
+    parser.add_argument("--rho", type=float, default=0.01, help="rho parameter of ssfgm.")
     args = parser.parse_args()
     print(f"Experiment args: {vars(args)}")
 
@@ -48,7 +48,7 @@ if __name__ == "__main__":
                 x = honest_x
         agg_mean = aggregators.ssfgm(
             x,
-            r=args.r,
+            rho=args.rho,
         )
         honest_mean = honest_x.mean(0)
         full_mean = x.mean(0)

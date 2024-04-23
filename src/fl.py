@@ -116,7 +116,7 @@ def geomedian(all_params):
 
 
 @jax.jit
-def ssfgm(all_params, r: float = 0.01, gamma: float = 30):
+def ssfgm(all_params, rho: float = 0.01, gamma: float = 30):
     """
     Assumptions:
     - Attacking clients are in the minority
@@ -127,24 +127,44 @@ def ssfgm(all_params, r: float = 0.01, gamma: float = 30):
     X = jnp.array([jax.flatten_util.ravel_pytree(p)[0] for p in all_params])
     unflattener = jax.flatten_util.ravel_pytree(all_params[0])[1]
     X = (X.T * jnp.minimum(1, gamma / jnp.linalg.norm(X, axis=-1))).T
+    c = jnp.minimum(
+        1.0,
+        jnp.mean(
+            (jnp.sqrt(0.6) * (jnp.std(X, axis=0) + 1e-8)) /
+            (jnp.abs(jnp.median(X, axis=0) - jnp.mean(X, axis=0)) + 1e-8),
+        )
+    )
     # Eliminate samples that are too close to eachother, leaving only one representative
     dists = jnp.sum(X**2, axis=1)[:, None] + jnp.sum(X**2, axis=1)[None] - 2 * jnp.dot(X, X.T)
     sigma = jnp.std(X)
-    far_enough_idx = jnp.all((dists + (jnp.eye(X.shape[0]) * r * sigma)) >= (r * sigma), axis=0)
-    X = jnp.concatenate((X[far_enough_idx], np.mean(X[~far_enough_idx], axis=0).reshape(1, -1)))
-    c = min(
-        1.0,
-        jnp.mean(
-            jnp.sqrt(0.6) /
-            jnp.abs(jnp.median(X, axis=0) - jnp.mean(X, axis=0) / jnp.std(X, axis=0)),
-        )
-    )
-    k = round(X.shape[0] * c) - 1
+    far_enough_idx = jnp.all((dists + (jnp.eye(X.shape[0]) * rho * sigma)) >= (rho * sigma), axis=0)
+    overlap_X = jnp.sum((X.T * ~far_enough_idx).T, axis=0) / jnp.maximum(jnp.sum(~far_enough_idx), 1.0)
+    X = jnp.concatenate((X, overlap_X.reshape(1, -1)))
+    far_enough_idx = jnp.concatenate((far_enough_idx, jnp.array([True])))
+    k = (jnp.round(jnp.sum(far_enough_idx) * c) - 1 + jnp.sum(~far_enough_idx)).astype(int)
     return unflattener(jspo.minimize(
-        lambda x: jnp.sum(jnp.partition(jnp.linalg.norm(X - x, axis=1), k)[:k]),
-        x0=np.mean(X, axis=0),
+        lambda x: jnp.sum(jnp.where(
+            (jnp.linalg.norm(X - x, axis=1) <= jnp.sort(jnp.where(far_enough_idx, jnp.linalg.norm(X - x, axis=1), 0.0))[k]) & far_enough_idx,
+            jnp.linalg.norm(X - x, axis=1),
+            0.0,
+        )),
+        x0=jnp.mean(X, axis=0),
         method="BFGS",
     ).x)
+
+
+@jax.jit
+def space_sample_mean(all_params):
+    X = jnp.array([jax.flatten_util.ravel_pytree(p)[0] for p in all_params])
+    unflattener = jax.flatten_util.ravel_pytree(all_params[0])[1]
+    # Eliminate samples that are too close to eachother, leaving only one representative
+    dists = jnp.sum(X**2, axis=1)[:, None] + jnp.sum(X**2, axis=1)[None] - 2 * jnp.dot(X, X.T)
+    rho = jnp.max(dists) / jnp.sqrt(X.shape[0])
+    sigma = jnp.std(X)
+    far_enough_idx = jnp.all((dists + (jnp.eye(X.shape[0]) * rho * sigma)) >= (rho * sigma), axis=0)
+    X_sum = jnp.sum((X.T * far_enough_idx).T, axis=0) + jnp.sum((X.T * ~far_enough_idx).T, axis=0)
+    X_mean = X_sum / (jnp.sum(far_enough_idx) + 1)
+    return unflattener(X_mean)
 
 
 class KickbackMomentum:
@@ -279,6 +299,12 @@ def get_aggregator(aggregator, params=None):
             return FedProx(params)
         case "mrcs":
             return MRCS(params)
+        case "ssfgm":
+            return ssfgm
+        case "space_sample_mean":
+            return space_sample_mean
+        case _:
+            raise NotImplementedError(f"{aggregator} not implemented")
 
 
 class Client:

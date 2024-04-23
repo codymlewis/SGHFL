@@ -19,8 +19,8 @@ def process_label(label: str | int | float) -> str:
             return "TrMean"
         case "ssfgm":
             return "SSFGM"
-        case "r":
-            return "$r$"
+        case "rho":
+            return r"$\rho$"
         case "c":
             return "$C$"
     return label.title()

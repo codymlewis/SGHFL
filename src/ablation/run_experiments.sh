@@ -3,8 +3,8 @@
 
 # First we evaluate the sensitivity of r in mitigating LIE
 for padversaries in $(seq 0.0 0.1 0.5); do
-  for r in 0.0001 0.001 0.01 0.1 0.2 0.3; do
-    python sensitivity.py --r "$r" --attack lie --padversaries "$padversaries"
+  for rho in 0.0001 0.001 0.01 0.1 0.2 0.3; do
+    python sensitivity.py --rho "$rho" --attack lie --padversaries "$padversaries"
   done
 done
 
