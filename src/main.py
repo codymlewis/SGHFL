@@ -221,7 +221,8 @@ def power_test(
     args_dict: Dict[str, str | int | float | bool],
     finetune_steps: int = 0,
 ) -> Tuple[str, str]:
-    server.finetune(finetune_steps)
+    if finetune_steps > 0:
+        server.finetune(finetune_steps)
     mae, res_sum_squares, total_sum_squares = 0.0, 0.0, 0.0
     nclients = 0
     for client in server.clients:
