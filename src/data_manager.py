@@ -51,8 +51,9 @@ def solar_home():
         Y_test.append(client_test_Y)
     X_test = np.concatenate(X_test)
     Y_test = np.concatenate(Y_test)
+    test_idx = np.random.default_rng(4568).choice(len(Y_test), len(Y_test) // 20, replace=False)
 
-    return client_data, X_test, Y_test
+    return client_data, X_test[test_idx], Y_test[test_idx]
 
 
 def solar_home_regions():
@@ -84,8 +85,9 @@ def apartment():
         Y_test.append(client_test_Y)
     X_test = np.concatenate(X_test)
     Y_test = np.concatenate(Y_test)
+    test_idx = np.random.default_rng(3784).choice(len(Y_test), len(Y_test) // 10, replace=False)
 
-    return client_data, X_test, Y_test
+    return client_data, X_test[test_idx], Y_test[test_idx]
 
 
 def apartment_regions():
