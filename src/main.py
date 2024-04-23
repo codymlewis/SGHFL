@@ -285,7 +285,10 @@ if __name__ == "__main__":
     start_time = time.time()
     rng = np.random.default_rng(args.seed)
     rngkey = jax.random.PRNGKey(args.seed)
-    drop_episode = round(args.episodes * args.drop_point)
+    if args.dataset == "l2rpn":
+        drop_episode = round(args.episodes * args.drop_point)
+    else:
+        drop_episode = round(args.rounds * args.drop_point)
 
     if args.dataset == "l2rpn":
         server = l2rpn_setup(
