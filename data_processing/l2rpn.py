@@ -74,7 +74,7 @@ def download():
 
     logging.info("Generating testing dataset...")
     test_env = grid2op.make(env_name + "_test", backend=LightSimBackend(), reward_class=LinesCapacityReward)
-    testing_data = gen_data(test_env, episodes, timesteps)
+    testing_data = gen_data(test_env, agent, episodes, timesteps)
     testing_data_fn = '../data/l2rpn_testing.safetensors'
     save_file(testing_data, testing_data_fn)
     logging.info(f"Testing data written to {testing_data_fn}")
