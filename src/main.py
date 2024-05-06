@@ -50,7 +50,6 @@ def l2rpn_setup(
     pct_saturation=1.0,
     seed=0,
 ):
-
     num_middle_servers = 10
     forecast_model = fl.ForecastNet()
     global_params = forecast_model.init(jax.random.PRNGKey(seed), jnp.zeros((1, 2 * forecast_window + 2)))
@@ -152,7 +151,7 @@ def l2rpn_train(
 
 def power_train(server: fl.Server, rounds: int, drop_round: int) -> float:
     for r in trange(rounds):
-        cs, all_losses = server.step()
+        cs, all_losses = server.step(client_steps=10)
         logger.info(f"Global loss at round {r + 1}: {np.mean(all_losses):.5f}")
         if r == drop_round - 1:
             server.drop_clients()

@@ -363,10 +363,11 @@ class Client:
             predicted_forecast = forecast(self.state, sample)
         return true_forecast, predicted_forecast
 
-    def step(self, global_params, batch_size=128):
+    def step(self, global_params, batch_size=128, steps=1):
         self.state = self.state.replace(params=global_params)
-        idx = self.rng.choice(len(self.data), batch_size, replace=False)
-        loss, self.state = learner_step(self.state, self.data.X[idx], self.data.Y[idx])
+        for _ in range(steps):
+            idx = self.rng.choice(len(self.data), batch_size, replace=False)
+            loss, self.state = learner_step(self.state, self.data.X[idx], self.data.Y[idx])
         return loss, self.state.params
 
     def set_params(self, global_params):
@@ -431,16 +432,16 @@ class Server:
         d_true_forecasts, d_predicted_forecasts = np.array(d_true_forecasts), np.array(d_predicted_forecasts)
         return true_forecasts, predicted_forecasts, d_true_forecasts, d_predicted_forecasts
 
-    def step(self):
-        all_losses, all_grads = self.inner_step()
+    def step(self, client_steps=1):
+        all_losses, all_grads = self.inner_step(client_steps)
         self.global_params = tree_add(self.global_params, self.aggregate(all_grads))
         return cosine_similarity(self.global_params, all_grads), all_losses
 
-    def inner_step(self):
+    def inner_step(self, client_steps=1):
         all_grads = []
         all_losses = []
         for client in self.clients:
-            loss, params = client.step(self.global_params, self.batch_size)
+            loss, params = client.step(self.global_params, self.batch_size, client_steps)
             grads = tree_sub(params, self.global_params)
             all_grads.append(grads)
             all_losses.append(loss)
@@ -495,11 +496,11 @@ class MiddleServer:
             predicted_forecasts.append(predicted_forecast)
         return true_forecasts, predicted_forecasts
 
-    def step(self, global_params, batch_size):
+    def step(self, global_params, batch_size, steps=1):
         all_params = []
         all_losses = []
         for client in self.clients:
-            loss, params = client.step(global_params, batch_size)
+            loss, params = client.step(global_params, batch_size, steps=steps)
             all_params.append(params)
             all_losses.append(loss)
         new_params = self.aggregate(all_params)
