@@ -432,10 +432,11 @@ class Server:
         d_true_forecasts, d_predicted_forecasts = np.array(d_true_forecasts), np.array(d_predicted_forecasts)
         return true_forecasts, predicted_forecasts, d_true_forecasts, d_predicted_forecasts
 
-    def step(self, client_steps=1):
+    def step(self, compute_cs=False, client_steps=1):
         all_losses, all_grads = self.inner_step(client_steps)
         self.global_params = tree_add(self.global_params, self.aggregate(all_grads))
-        return cosine_similarity(self.global_params, all_grads), all_losses
+        cs = cosine_similarity(self.global_params, all_grads) if compute_cs else -3.0
+        return cs, all_losses
 
     def inner_step(self, client_steps=1):
         all_grads = []

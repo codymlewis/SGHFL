@@ -141,8 +141,8 @@ def l2rpn_train(
             obs_time = training_data[f"E{e}T{t}:time"]
             server.add_data(obs_load_p, obs_gen_p, obs_time)
         if (e + 1) * timesteps > (batch_size + forecast_window):
-            for _ in range(rounds):
-                cs, all_losses = server.step()
+            for r in range(rounds):
+                cs, all_losses = server.step(compute_cs=(e == (episodes - 1)) and (r == (rounds - 1)))
             logger.info(f"Global loss at episode {e + 1}: {np.mean(all_losses):.5f}")
         if e == drop_episode - 1:
             server.drop_clients()
@@ -151,7 +151,7 @@ def l2rpn_train(
 
 def power_train(server: fl.Server, rounds: int, drop_round: int) -> float:
     for r in trange(rounds):
-        cs, all_losses = server.step(client_steps=10)
+        cs, all_losses = server.step(compute_cs=r == (rounds - 1), client_steps=10)
         logger.info(f"Global loss at round {r + 1}: {np.mean(all_losses):.5f}")
         if r == drop_round - 1:
             server.drop_clients()
@@ -278,6 +278,8 @@ if __name__ == "__main__":
                         help="Perform model poisoning on the federated learning model.")
     parser.add_argument('--drop-point', type=float, default=1.1,
                         help="Percent of episodes to pass before dropping clients")
+    parser.add_argument('-if', '--intermediate-finetuning', action="store_true",
+                        help="Whether to perform intermediate finetuning")
     args = parser.parse_args()
 
     print(f"Running experiment with {vars(args)}")
@@ -325,7 +327,8 @@ if __name__ == "__main__":
         cs = power_train(server, args.rounds, drop_episode)
 
     logger.info("Testing the trained model.")
-    args_dict = vars(args)
+    args_dict = vars(args).copy()
+    del args_dict["intermediate_finetuning"]
 
     if args.dataset == "l2rpn":
         header, results = l2rpn_test(server, args.episodes, args.timesteps, args.forecast_window, cs, args_dict)
@@ -342,16 +345,17 @@ if __name__ == "__main__":
         f.write(results + "\n")
     logger.info(f"Results written to {filename}")
 
-    logger.info("Evaluating with finetuning...")
-    args_dict["server_aggregator"] += " IF"
-    if args.dataset == "l2rpn":
-        _, results = l2rpn_test(
-            server, args.episodes, args.timesteps, args.forecast_window, cs, args_dict, finetune_steps=5
-        )
-    else:
-        _, results = power_test(server, X_test, Y_test, cs, args_dict, finetune_steps=5)
-    with open(filename, 'a') as f:
-        f.write(results + "\n")
-    logger.info(f"Results written to {filename}")
+    if args.intermediate_finetuning:
+        logger.info("Evaluating with finetuning...")
+        args_dict["server_aggregator"] += " IF"
+        if args.dataset == "l2rpn":
+            _, results = l2rpn_test(
+                server, args.episodes, args.timesteps, args.forecast_window, cs, args_dict, finetune_steps=5
+            )
+        else:
+            _, results = power_test(server, X_test, Y_test, cs, args_dict, finetune_steps=5)
+        with open(filename, 'a') as f:
+            f.write(results + "\n")
+        logger.info(f"Results written to {filename}")
 
     logger.info(f"Experiment took {time.time() - start_time} seconds")
