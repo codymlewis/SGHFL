@@ -111,7 +111,8 @@ def geomedian(all_params):
     return unflattener(jspo.minimize(
         lambda x: jnp.linalg.norm(X - x),
         x0=jnp.mean(X, axis=0),
-        method="BFGS"
+        method="BFGS",
+        options={"maxiter": 5}
     ).x)
 
 
@@ -150,6 +151,7 @@ def ssfgm(all_params, rho: float = 0.01, gamma: float = 30):
         )),
         x0=jnp.mean(X, axis=0),
         method="BFGS",
+        options={"maxiter": 5}
     ).x)
 
 
