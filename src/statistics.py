@@ -219,14 +219,14 @@ def create_plot(input_df: pl.DataFrame, filename: str, plot_type: str = "fairnes
             )
     fig.text(0.5, 0.07, 'Data Collector Aggregator', ha='center')
     fig.text(0.07, 0.5, 'Distribution Server Aggregator', va='center', rotation='vertical')
-    plt.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=0.0, hspace=0.0)
-    plt.savefig(filename, dpi=320)
+    plt.subplots_adjust(wspace=0.0, hspace=0.0)
+    plt.savefig(filename, dpi=320, bbox_inches="tight")
     logger.info(f"Saved plot to {filename}")
 
 
 if __name__ == "__main__":
     os.makedirs("plots", exist_ok=True)
-    for dataset in ["l2rpn"]:
+    for dataset in ["l2rpn", "apartment", "solar_home"]:
         q = (
             pl.scan_csv("results/results.csv")
             .filter(pl.col("dataset") == dataset)
