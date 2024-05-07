@@ -7,7 +7,7 @@ import fl
 
 
 class EmptyUpdater(fl.Client):
-    def step(self, global_params, batch_size=128):
+    def step(self, global_params, batch_size=128, steps=1):
         self.state = self.state.replace(params=global_params)
         idx = self.rng.choice(len(self.data), batch_size, replace=False)
         loss, _ = fl.learner_step(self.state, self.data.X[idx], self.data.Y[idx])
@@ -20,13 +20,13 @@ class Adversary(fl.Client):
         self.corroborator = corroborator
         self.corroborator.register(self)
 
-    def honest_step(self, global_params, batch_size=128):
-        return super().step(global_params, batch_size)
+    def honest_step(self, global_params, batch_size=128, steps=1):
+        return super().step(global_params, batch_size, steps=steps)
 
 
 class LIE(Adversary):
-    def step(self, global_params, batch_size=128):
-        mu, sigma, loss = self.corroborator.calc_grad_stats(global_params, self.id, batch_size)
+    def step(self, global_params, batch_size=128, steps=1):
+        mu, sigma, loss = self.corroborator.calc_grad_stats(global_params, self.id, batch_size, steps)
         return loss, lie(mu, sigma, self.corroborator.z_max)
 
 
@@ -36,8 +36,8 @@ def lie(mu, sigma, z_max):
 
 
 class IPM(Adversary):
-    def step(self, global_params, batch_size=128):
-        mu, sigma, loss = self.corroborator.calc_grad_stats(global_params, self.id, batch_size)
+    def step(self, global_params, batch_size=128, steps=1):
+        mu, sigma, loss = self.corroborator.calc_grad_stats(global_params, self.id, batch_size, steps)
         return loss, ipm(global_params, mu, self.corroborator.nadversaries)
 
 
@@ -65,7 +65,7 @@ class Corroborator:
         self.adversaries.append(adversary)
         self.adv_ids.append(adversary.id)
 
-    def calc_grad_stats(self, global_params, adv_id, batch_size):
+    def calc_grad_stats(self, global_params, adv_id, batch_size, steps=1):
         if self.updated_advs:
             self.updated_advs.append(adv_id)
             if set(self.updated_advs) == set(self.adv_ids):  # if everyone has updated, stop using the cached value
@@ -75,7 +75,7 @@ class Corroborator:
         honest_parameters = []
         honest_losses = []
         for a in self.adversaries:
-            loss, parameters = a.honest_step(global_params, batch_size)
+            loss, parameters = a.honest_step(global_params, batch_size, steps)
             honest_parameters.append(parameters)
             honest_losses.append(loss)
 
