@@ -195,16 +195,19 @@ def create_plot(input_df: pl.DataFrame, filename: str, plot_type: str = "fairnes
             else:
                 values = find_fairness_attack_values(df)
             ax = next(axes)
-            if np.any([v.shape[0] == 0 for v in values]):
-                ax.text(
-                    len(values) / 2 + 0.5,
-                    0.5,
-                    "Convergence failed",
-                    horizontalalignment="center",
-                    verticalalignment="center",
-                )
-            else:
-                ax.violinplot(values, showmeans=True)
+            colours = ["#0d0887" for _ in values]
+            for i, v in enumerate(values):
+                if v.shape[0] == 0:
+                    values[i] = np.array([-0.05])
+                    colours[i] = "#ed7953"
+            parts = ax.violinplot(values, showmeans=True)
+            for pc, colour in zip(parts['bodies'], colours):
+                pc.set_facecolor(colour)
+                pc.set_edgecolor(colour)
+            parts['cmeans'].set_colors(colours)
+            parts['cmins'].set_colors(colours)
+            parts['cmaxes'].set_colors(colours)
+            parts['cbars'].set_colors(colours)
             ax.set_ylim([-0.1, 1.1])
             if plot_type == "fairness":
                 labels = ["$r^2$", "N$r^2$", "D$r^2$", "IFD$r^2$", "CS"]
@@ -232,5 +235,6 @@ if __name__ == "__main__":
             .filter(pl.col("dataset") == dataset)
         )
         results_data = q.collect()
-        for plot_type in ["fairness", "attack", "fairness_attack"]:
-            create_plot(results_data, f"plots/{dataset}_{plot_type}.png", plot_type)
+        if len(results_data) > 0:
+            for plot_type in ["fairness", "attack", "fairness_attack"]:
+                create_plot(results_data, f"plots/{dataset}_{plot_type}.png", plot_type)
