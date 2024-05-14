@@ -136,25 +136,25 @@ def find_fairness_attack_values(df: pl.DataFrame) -> List[pl.Series]:
         df.filter(
             ~pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 0.4) &
-            (pl.col("pct_saturation") == 1.0) &
+            (pl.col("pct_saturation") == 0.5) &
             (pl.col("attack") == "ipm")
         )["r2_score"],
         df.filter(
             ~pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 0.4) &
-            (pl.col("pct_saturation") == 1.0) &
+            (pl.col("pct_saturation") == 0.5) &
             (pl.col("attack") == "ipm")
         )["dropped r2_score"],
         df.filter(
             ~pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 0.4) &
-            (pl.col("pct_saturation") == 1.0) &
+            (pl.col("pct_saturation") == 0.5) &
             (pl.col("attack") == "lie")
         )["r2_score"],
         df.filter(
             ~pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 0.4) &
-            (pl.col("pct_saturation") == 1.0) &
+            (pl.col("pct_saturation") == 0.5) &
             (pl.col("attack") == "lie")
         )["dropped r2_score"],
     ]
