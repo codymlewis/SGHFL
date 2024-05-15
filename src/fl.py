@@ -16,7 +16,7 @@ from logger import logger
 
 
 class ForecastNet(nn.Module):
-    "Neural network for predicting future power load and generation"
+    "Neural network for predicting future power load and generation in L2RPN"
     classes: int = 2
 
     @nn.compact
@@ -26,6 +26,17 @@ class ForecastNet(nn.Module):
         x = nn.Dense(6)(x)
         x = nn.relu(x)
         x = nn.Dense(self.classes)(x)
+        return x
+
+
+class PowerNet(nn.Module):
+    "Neural network for predicting future power load and generation in solar_home and apartment"
+    classes: int = 2
+
+    @nn.compact
+    def __call__(self, x):
+        x = nn.standardize(x)
+        x = nn.Dense(self.classes, name="classifier")(x)
         return x
 
 
@@ -39,10 +50,10 @@ def learner_step(
     def loss_fn(params):
         predictions = state.apply_fn(params, X)
         return jnp.mean(jnp.where(
-            jnp.abs(predictions - Y) < delta,
-            0.5 * (predictions - Y)**2,
-            delta * (jnp.abs(predictions - Y) - 0.5 * delta)
-        ))
+                jnp.abs(predictions - Y) < delta,
+                0.5 * (predictions - Y)**2,
+                delta * (jnp.abs(predictions - Y) - 0.5 * delta)
+            ))
 
     loss, grads = jax.value_and_grad(loss_fn)(state.params)
     state = state.apply_gradients(grads=grads)
@@ -145,7 +156,9 @@ def ssfgm(all_params, rho: float = 0.01, gamma: float = 30):
     k = (jnp.round(jnp.sum(far_enough_idx) * c) - 1 + jnp.sum(~far_enough_idx)).astype(int)
     return unflattener(jspo.minimize(
         lambda x: jnp.sum(jnp.where(
-            (jnp.linalg.norm(X - x, axis=1) <= jnp.sort(jnp.where(far_enough_idx, jnp.linalg.norm(X - x, axis=1), 0.0))[k]) & far_enough_idx,
+            (
+                jnp.linalg.norm(X - x, axis=1) <= jnp.sort(jnp.where(far_enough_idx, jnp.linalg.norm(X - x, axis=1), 0.0))[k]
+            ) & far_enough_idx,
             jnp.linalg.norm(X - x, axis=1),
             0.0,
         )),

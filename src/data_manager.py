@@ -95,19 +95,20 @@ def apartment_regions():
 
 
 def load_data(dataset):
-    return globals()[dataset]()
+    match dataset:
+        case "solar_home":
+            return solar_home()
+        case "apartment":
+            return apartment()
+        case _:
+            raise NotImplementedError(f"Dataset {dataset} is not implemented")
 
 
 def load_regions(dataset):
-    return globals()[f"{dataset}_regions"]()
-
-
-def gen_backdoor_data(X, Y):
-    backdoor_X = X.copy().reshape(len(X), 23, -1)
-    backdoor_X[:, -3:, -1] = 100
-    backdoor_Y = Y.copy()
-    if len(backdoor_Y.shape) > 1:
-        backdoor_Y[:, -1] = 10
-    else:
-        backdoor_Y[:] = 10
-    return backdoor_X.reshape(X.shape), backdoor_Y
+    match dataset:
+        case "solar_home":
+            return solar_home_regions()
+        case "apartment":
+            return apartment_regions()
+        case _:
+            raise NotImplementedError(f"Dataset region for {dataset} is not implemented")

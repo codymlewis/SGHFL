@@ -57,7 +57,7 @@ class Corroborator:
         self.loss = None
         self.parameters = None
         s = self.nclients // 2 + 1 - self.nadversaries
-        self.z_max = jsp.stats.norm.ppf((self.nclients - s) / self.nclients)
+        self.z_max = jsp.stats.norm.ppf(min(0.999, self.nclients - s) / self.nclients)
         self.adv_ids = []
         self.updated_advs = []
 

@@ -25,13 +25,13 @@ def np_indexof(arr, val):
     return None
 
 
-def get_adversary_class(attack, nclients):
+def get_adversary_class(attack, nclients, pct_adversaries, pct_saturation):
     if attack == "none":
         adversary_type = fl.Client
     elif attack == "empty":
         adversary_type = adversaries.EmptyUpdater
     else:
-        corroborator = adversaries.Corroborator(nclients, round(nclients * (1 - 0.5)))
+        corroborator = adversaries.Corroborator(nclients, round(nclients * (1 - (pct_adversaries * pct_saturation))))
         if attack == "lie":
             adversary_type = partial(adversaries.LIE, corroborator=corroborator)
         else:
@@ -55,7 +55,7 @@ def l2rpn_setup(
     global_params = forecast_model.init(jax.random.PRNGKey(seed), jnp.zeros((1, 2 * forecast_window + 2)))
     substation_data = load_file('../data/l2rpn_substation.safetensors')
     substation_ids = substation_data['ids']
-    adversary_type = get_adversary_class(attack, len(substation_ids))
+    adversary_type = get_adversary_class(attack, len(substation_ids), pct_adversaries, pct_saturation)
     middle_servers = [
         fl.MiddleServer(
             global_params,
@@ -96,9 +96,9 @@ def power_setup(
     pct_saturation=1.0,
     seed=0,
 ):
-    forecast_model = fl.ForecastNet(classes=client_data[0].Y.shape[-1])
+    forecast_model = fl.PowerNet(classes=client_data[0].Y.shape[-1])
     global_params = forecast_model.init(jax.random.PRNGKey(seed), client_data[0].X[:1])
-    adversary_type = get_adversary_class(attack, len(client_data))
+    adversary_type = get_adversary_class(attack, len(client_data), pct_adversaries, pct_saturation)
     middle_servers = [
         fl.MiddleServer(
             global_params,
@@ -247,7 +247,7 @@ def power_test(
     else:
         dropped_r2_score = 0.0
     header = "mae,rmse,r2_score,dropped mae,dropped rmse,dropped r2_score," + ",".join(args_dict.keys())
-    results = f"{mae},{r2_score},{dropped_mae},{dropped_r2_score}"
+    results = f"{mae},{r2_score},{dropped_mae},{dropped_r2_score},"
     results += ",".join([str(v) for v in args_dict.values()])
     header += ",cosine_similarity"
     results += f",{cs}"
@@ -329,6 +329,7 @@ if __name__ == "__main__":
     logger.info("Testing the trained model.")
     args_dict = vars(args).copy()
     del args_dict["intermediate_finetuning"]
+    del args_dict["seed"]
 
     if args.dataset == "l2rpn":
         header, results = l2rpn_test(server, args.episodes, args.timesteps, args.forecast_window, cs, args_dict)
