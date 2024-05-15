@@ -223,7 +223,7 @@ def create_plot(input_df: pl.DataFrame, filename: str, plot_type: str = "fairnes
     fig.text(0.5, 0.07, 'Data Collector Aggregator', ha='center')
     fig.text(0.07, 0.5, 'Distribution Server Aggregator', va='center', rotation='vertical')
     plt.subplots_adjust(wspace=0.0, hspace=0.0)
-    plt.savefig(filename, dpi=320, bbox_inches="tight")
+    plt.savefig(filename, bbox_inches="tight")
     logger.info(f"Saved plot to {filename}")
 
 
@@ -237,4 +237,4 @@ if __name__ == "__main__":
         results_data = q.collect()
         if len(results_data) > 0:
             for plot_type in ["fairness", "attack", "fairness_attack"]:
-                create_plot(results_data, f"plots/{dataset}_{plot_type}.png", plot_type)
+                create_plot(results_data, f"plots/{dataset}_{plot_type}.pdf", plot_type)
