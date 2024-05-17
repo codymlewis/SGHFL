@@ -1,6 +1,7 @@
 from typing import List
 import os
 import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import polars as pl
 
@@ -161,6 +162,7 @@ def find_fairness_attack_values(df: pl.DataFrame) -> List[pl.Series]:
 
 
 def create_plot(input_df: pl.DataFrame, filename: str, plot_type: str = "fairness"):
+    cmap_name = "Reds"
     server_aggregators = sorted(
         [sa for sa in input_df["server_aggregator"].unique() if not sa.endswith("IF")],
         key=aggregator_key,
@@ -176,6 +178,7 @@ def create_plot(input_df: pl.DataFrame, filename: str, plot_type: str = "fairnes
     for sa, ax in zip(server_aggregators, axes[:, 0]):
         ax.set_ylabel(process_agg_name(sa))
     axes = iter(axes.flatten())
+    cmap = mpl.colormaps[cmap_name]
     for server_aggregator in server_aggregators:
         for middle_server_aggregator in middle_server_aggregators:
             q = (
@@ -195,19 +198,21 @@ def create_plot(input_df: pl.DataFrame, filename: str, plot_type: str = "fairnes
             else:
                 values = find_fairness_attack_values(df)
             ax = next(axes)
-            colours = ["#0d0887" for _ in values]
+            colours = [cmap(0.0) for _ in values]
             for i, v in enumerate(values):
                 if v.shape[0] == 0:
                     values[i] = np.array([-0.05])
-                    colours[i] = "#ed7953"
+                else:
+                    colours[i] = cmap(np.mean(v.to_numpy()))
             parts = ax.violinplot(values, showmeans=True)
             for pc, colour in zip(parts['bodies'], colours):
                 pc.set_facecolor(colour)
-                pc.set_edgecolor(colour)
-            parts['cmeans'].set_colors(colours)
-            parts['cmins'].set_colors(colours)
-            parts['cmaxes'].set_colors(colours)
-            parts['cbars'].set_colors(colours)
+                pc.set_edgecolor("black")
+                pc.set_alpha(1)
+            parts['cmeans'].set_colors("black")
+            parts['cmins'].set_colors("black")
+            parts['cmaxes'].set_colors("black")
+            parts['cbars'].set_colors("black")
             ax.set_ylim([-0.1, 1.1])
             if plot_type == "fairness":
                 labels = ["$r^2$", "N$r^2$", "D$r^2$", "IFD$r^2$", "CS"]
@@ -222,6 +227,13 @@ def create_plot(input_df: pl.DataFrame, filename: str, plot_type: str = "fairnes
             )
     fig.text(0.5, 0.07, 'Data Collector Aggregator', ha='center')
     fig.text(0.07, 0.5, 'Distribution Server Aggregator', va='center', rotation='vertical')
+    fig.subplots_adjust(right=0.95)
+    cbar_ax = fig.add_axes([0.97, 0.15, 0.03, 0.7])
+    fig.colorbar(
+        mpl.cm.ScalarMappable(norm=mpl.colors.Normalize(0, 1), cmap=cmap_name),
+        label='Mean',
+        cax=cbar_ax,
+    )
     plt.subplots_adjust(wspace=0.0, hspace=0.0)
     plt.savefig(filename, bbox_inches="tight")
     logger.info(f"Saved plot to {filename}")
