@@ -215,17 +215,26 @@ def create_plot(input_df: pl.DataFrame, filename: str, plot_type: str = "fairnes
             parts['cbars'].set_colors("black")
             ax.set_ylim([-0.1, 1.1])
             if plot_type == "fairness":
-                labels = ["$r^2$", "N$r^2$", "D$r^2$", "IFD$r^2$", "CS"]
+                labels = [
+                    "Normal $r^2$", "Participating $r^2$", "Dropped $r^2$", "Dropped with IF $r^2$", "Cosine Similarity"
+                ]
             elif plot_type == "attack":
-                labels = ["No", "E", "SE", "I", "SI", "L", "SL"]
+                labels = ["No Attack", "Empty", "Saturated Empty", "IPM", "Saturated IPM", "LIE", "Saturated LIE"]
             elif plot_type == "fairness_attack":
-                labels = ["NN", "DN", "NI", "DI", "NL", "DL"]
-            ax.set_xticks([i + 1 for i in range(len(values))], labels=labels)
+                labels = [
+                    "Partipating No Attack",
+                    "Dropped No Attack",
+                    "Participating IPM",
+                    "Dropped IPM",
+                    "Participating LIE",
+                    "Dropped LIE",
+                ]
+            ax.set_xticks([i + 1 for i in range(len(values))], labels=labels, rotation='vertical')
             ax.tick_params(
                 bottom=server_aggregator == server_aggregators[-1],
                 left=middle_server_aggregator == middle_server_aggregators[0],
             )
-    fig.text(0.5, 0.07, 'Data Collector Aggregator', ha='center')
+    fig.text(0.5, 0.0, 'Data Collector Aggregator', ha='center')
     fig.text(0.07, 0.5, 'Distribution Server Aggregator', va='center', rotation='vertical')
     fig.subplots_adjust(right=0.95)
     cbar_ax = fig.add_axes([0.97, 0.15, 0.03, 0.7])
