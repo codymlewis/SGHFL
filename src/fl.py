@@ -169,6 +169,16 @@ def ssfgm(all_params, rho: float = 0.01, gamma: float = 30):
 
 
 @jax.jit
+def topk_ssfgm(all_params, k: float = 0.9, rho: float = 0.01, gamma: float = 30):
+    def prune(x):
+        K = round((1 - k) * x.size)
+        return jnp.where(x >= jnp.partition(x.reshape(-1), K)[K], x, 0)
+
+    pruned_params = [jax.tree_util.tree_map(prune, params) for params in all_params]
+    return ssfgm(pruned_params, rho, gamma)
+
+
+@jax.jit
 def space_sample_mean(all_params):
     X = jnp.array([jax.flatten_util.ravel_pytree(p)[0] for p in all_params])
     unflattener = jax.flatten_util.ravel_pytree(all_params[0])[1]
@@ -316,6 +326,8 @@ def get_aggregator(aggregator, params=None):
             return MRCS(params)
         case "ssfgm":
             return ssfgm
+        case "topk_ssfgm":
+            return topk_ssfgm
         case "space_sample_mean":
             return space_sample_mean
         case _:
