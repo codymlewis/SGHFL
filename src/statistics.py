@@ -18,6 +18,8 @@ def process_agg_name(label_name: str) -> str:
             label = "FedAVG"
         case "ssfgm":
             label = "SSFGM"
+        case "topk_ssfgm":
+            label = "Top $k$ SSFGM"
         case "geomedian":
             label = "GeoMedian"
         case "fedprox":
@@ -39,7 +41,7 @@ def aggregator_key(agg_name: str) -> int:
             key = 0
         case "median":
             key = 1
-        case "ssfgm" | "space_sample_mean" | "kickback_momentum" | "mrcs":
+        case "ssfgm" | "topk_ssfgm" | "space_sample_mean" | "kickback_momentum" | "mrcs":
             key = int.from_bytes(agg_name.encode("utf-8"), "big") + 2**5000
         case _:
             key = int.from_bytes(agg_name.encode("utf-8"), "big")
@@ -162,7 +164,7 @@ def find_fairness_attack_values(df: pl.DataFrame) -> List[pl.Series]:
 
 
 def create_plot(input_df: pl.DataFrame, filename: str, plot_type: str = "fairness"):
-    cmap_name = "Reds"
+    cmap_name = "Reds_r"
     server_aggregators = sorted(
         [sa for sa in input_df["server_aggregator"].unique() if not sa.endswith("IF")],
         key=aggregator_key,
