@@ -16,7 +16,7 @@ for dataset in "l2rpn" "apartment" "solar_home"; do
     
     for attack in "none" "empty" "lie" "ipm"; do
         for server_aggregator in "fedavg" "median" "krum" "trimmed_mean" "phocas" "geomedian" "fedprox" "ssfgm" "space_sample_mean"; do
-            for ms_aggregator in "fedavg" "topk" "geomedian" "kickback_momentum" "fedprox" "mrcs" "ssfgm"; do
+            for ms_aggregator in "fedavg" "topk" "geomedian" "kickback_momentum" "fedprox" "mrcs" "ssfgm" "topk_ssfgm"; do
                 for drop_point in 0.4 1.1; do
                     if [ $attack == 'none' ]; then
                         extra_flags=""
