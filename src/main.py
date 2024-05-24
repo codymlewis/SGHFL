@@ -50,17 +50,17 @@ def l2rpn_setup(
     pct_saturation=1.0,
     seed=0,
 ):
-    num_middle_servers = 10
     forecast_model = fl.ForecastNet()
     global_params = forecast_model.init(jax.random.PRNGKey(seed), jnp.zeros((1, 2 * forecast_window + 2)))
     substation_data = load_file('../data/l2rpn_substation.safetensors')
     substation_ids = substation_data['ids']
     adversary_type = get_adversary_class(attack, len(substation_ids), pct_adversaries, pct_saturation)
+    regions = data_manager.load_regions('l2rpn', duttagupta=server_aggregator == "duttagupta")
     middle_servers = [
         fl.MiddleServer(
             global_params,
             [
-                (adversary_type if (dc + 1 > math.ceil(num_middle_servers * (1 - pct_adversaries))) and
+                (adversary_type if (dc + 1 > math.ceil(len(regions) * (1 - pct_adversaries))) and
                     (c + 1 > math.ceil(len(sids) * (1 - pct_saturation))) else fl.Client)(
                     c,
                     forecast_model,
@@ -73,7 +73,7 @@ def l2rpn_setup(
                 ) for c, si in enumerate(sids)
             ],
             aggregator=middle_server_aggregator,
-        ) for dc, sids in enumerate(np.array_split(substation_ids, num_middle_servers))
+        ) for dc, sids in enumerate(regions)
     ]
     server = fl.Server(
         forecast_model,
@@ -309,7 +309,7 @@ if __name__ == "__main__":
         server = power_setup(
             args.batch_size,
             client_data,
-            data_manager.load_regions(args.dataset),
+            data_manager.load_regions(args.dataset, duttagupta=args.server_aggregator == "duttagupta"),
             server_aggregator=args.server_aggregator,
             middle_server_aggregator=args.middle_server_aggregator,
             attack=args.attack,

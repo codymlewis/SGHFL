@@ -318,6 +318,8 @@ def get_aggregator(aggregator, params=None):
             return ssfgm
         case "space_sample_mean":
             return space_sample_mean
+        case "duttagupta":
+            return fedavg
         case _:
             raise NotImplementedError(f"{aggregator} not implemented")
 

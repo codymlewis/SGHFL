@@ -1,15 +1,19 @@
 """
 Smart* Data Set for Sustainability https://traces.cs.umass.edu/index.php/Smart/Smart
 """
+import numpy as np
 import pandas as pd
 import os
 import requests
 import io
+import json
 from sklearn.impute import SimpleImputer
 from tqdm import tqdm
 import logging
 import tarfile
 from safetensors.numpy import save_file
+
+import duttagupta
 
 
 def download_and_extract(dload_url, extract_folder):
@@ -51,6 +55,23 @@ def download():
             full_df = pd.merge(df, weather[weather.date.isin(df.date)])
             client_id = csv_file[3:csv_file.find("_")]
             client_data[client_id] = full_df.drop(columns="date").to_numpy()
+
+        if year == years[0]:
+            regions_fn = "../data/apartment_regions.json"
+            with open(regions_fn, 'w') as f:
+                json.dump(
+                    {f"{i}": i // 10 for i in range(0, 114)},
+                    f,
+                )
+            logging.info(f"Region data written to {regions_fn}")
+
+            duttagupta_regions_fn = "../data/apartment_duttagupta_regions.json"
+            with open(duttagupta_regions_fn, 'w') as f:
+                json.dump(
+                    duttagupta.find_regions({cid: np.array([cd[0]]) for cid, cd in client_data.items()}),
+                    f,
+                )
+            logging.info(f"Duttagupta regions written to {duttagupta_regions_fn}")
 
         data_fn = f"../data/apartment_{year}.safetensors"
         save_file(client_data, data_fn)

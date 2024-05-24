@@ -3,6 +3,8 @@ import os
 import time
 import re
 import logging
+import itertools
+import json
 from tqdm import trange
 import numpy as np
 from safetensors.numpy import save_file
@@ -11,6 +13,8 @@ from grid2op.Reward import LinesCapacityReward
 from lightsim2grid import LightSimBackend
 from grid2op.Chronics import MultifolderWithCache
 from l2rpn_baselines.PPO_SB3 import train
+
+import duttagupta
 
 
 def gen_data(env, agent, episodes: int, timesteps: int) -> Dict:
@@ -71,6 +75,37 @@ def download():
     training_data_fn = '../data/l2rpn_training.safetensors'
     save_file(training_data, training_data_fn)
     logging.info(f"Training data written to {training_data_fn}")
+
+    num_middle_servers = 10
+    regions_arr = np.array_split(substation_data['ids'], num_middle_servers)
+    regions = {}
+    for region, cids in enumerate(regions_arr):
+        for cid in cids:
+            regions[str(cid)] = region
+    regions_fn = "../data/l2rpn_regions.json"
+    with open(regions_fn, 'w') as f:
+        json.dump(regions, f)
+    logging.info(f"Regions written to {regions_fn}")
+
+    client_data = {}
+    for cid in substation_data['ids']:
+        load_idx = np.where(substation_data['load'] == cid)[0]
+        if load_idx.shape[0] == 0:
+            load_idx = np.array([-1])
+        gen_idx = np.where(substation_data['gen'] == cid)[0]
+        if gen_idx.shape[0] == 0:
+            gen_idx = np.array([-1])
+        client_data[str(cid)] = np.array([
+            [
+                training_data[f"E{e}T{t}:load_p"][load_idx].mean(axis=0) if np.any(load_idx != -1) else 0.0,
+                training_data[f"E{e}T{t}:gen_p"][gen_idx].mean(axis=0) if np.any(gen_idx != -1) else 0.0,
+            ]
+            for e, t in itertools.product(range(episodes), range(timesteps))
+        ])
+    duttagupta_regions_fn = "../data/l2rpn_duttagupta_regions.json"
+    with open(duttagupta_regions_fn, 'w') as f:
+        json.dump(duttagupta.find_regions(client_data), f)
+    logging.info(f"Duttagupta regions written to {duttagupta_regions_fn}")
 
     logging.info("Generating testing dataset...")
     test_env = grid2op.make(env_name + "_test", backend=LightSimBackend(), reward_class=LinesCapacityReward)

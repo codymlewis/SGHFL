@@ -14,6 +14,8 @@ import logging
 from tqdm import tqdm
 from safetensors.numpy import save_file
 
+import duttagupta
+
 
 def download_and_extract(dload_url, extract_folder):
     logging.info(f"Downloading raw data files from {dload_url}...")
@@ -162,9 +164,9 @@ def process_data(filename):
 
     solar_home_data = solar_home_data[solar_home_data.Customer != 300]
     # For the final steps of processing, we first divide the clients into regions based on postcode
-    # if os.path.exists("../data/customer_regions.json"):
-    if False:
-        with open("../data/customer_regions.json", 'r') as f:
+    solar_home_regions_fn = "../data/solar_home_regions.json"
+    if os.path.exists(solar_home_regions_fn):
+        with open(solar_home_regions_fn, 'r') as f:
             customer_region_map = json.load(f)
     else:
         postcodes = solar_home_data.Postcode
@@ -173,15 +175,25 @@ def process_data(filename):
         customers = solar_home_data.Customer.unique()
         customer_region_map = {}
         for customer in customers:
-            region = postcode_region_map[solar_home_data.query(f"`Customer` == {customer}").Postcode.unique().item()]
+            region = postcode_region_map[solar_home_data.query("`Customer` == @customer").Postcode.unique().item()]
             customer_region_map[str(customer)] = region
-        with open("../data/customer_regions.json", 'w') as f:
+        with open(solar_home_regions_fn, 'w') as f:
             json.dump(customer_region_map, f)
+
+    sh_duttagupta_regions_fn = "../data/solar_home_duttagupta_regions.json"
+    customer_energy_data = {}
+    for customer in solar_home_data.Customer.unique():
+        customer_home_data = solar_home_data.query("`Customer` == @customer")
+        customer_energy_data[str(customer)] = np.array([
+            customer_home_data['Consumed Energy'], customer_home_data['Generated Energy']
+        ])
+    with open(sh_duttagupta_regions_fn, 'w') as f:
+        json.dump(duttagupta.find_regions(customer_energy_data), f)
 
     # Then we sort and format the rest of the data for use in the machine learning model
     sorted_full_data = {}
     for customer in tqdm(solar_home_data.Customer.unique()):
-        customer_data = solar_home_data.query(f"`Customer` == {customer}")
+        customer_data = solar_home_data.query("`Customer` == @customer")
         postcode_weather_data = weather_data[str(customer_data.Postcode.unique().item())]
         net_energy_data = {
             time: [con_energy, gen_energy]

@@ -31,6 +31,15 @@ class Dataset:
         return min(self.i, self.Y.shape[0])
 
 
+def process_regions_json(regions_json_fn):
+    with open(regions_json_fn, 'r') as f:
+        client_regions = json.load(f)
+    regions = [[] for _ in np.unique(list(client_regions.values()))]
+    for client, region_i in client_regions.items():
+        regions[region_i].append(int(client) - 1)
+    return regions
+
+
 def solar_home():
     train_data = load_file("../data/solar_home_2010-2011.safetensors")
     test_data = load_file("../data/solar_home_2011-2012.safetensors")
@@ -54,15 +63,6 @@ def solar_home():
     test_idx = np.random.default_rng(4568).choice(len(Y_test), len(Y_test) // 20, replace=False)
 
     return client_data, X_test[test_idx], Y_test[test_idx]
-
-
-def solar_home_regions():
-    with open("../data/customer_regions.json", 'r') as f:
-        customer_regions = json.load(f)
-    regions = [[] for _ in np.unique(list(customer_regions.values()))]
-    for customer, region_i in customer_regions.items():
-        regions[region_i].append(int(customer) - 1)
-    return regions
 
 
 def apartment():
@@ -90,10 +90,6 @@ def apartment():
     return client_data, X_test[test_idx], Y_test[test_idx]
 
 
-def apartment_regions():
-    return [list(range(i, min(i + 10, 114))) for i in range(0, 114, 10)]
-
-
 def load_data(dataset):
     match dataset:
         case "solar_home":
@@ -104,11 +100,7 @@ def load_data(dataset):
             raise NotImplementedError(f"Dataset {dataset} is not implemented")
 
 
-def load_regions(dataset):
-    match dataset:
-        case "solar_home":
-            return solar_home_regions()
-        case "apartment":
-            return apartment_regions()
-        case _:
-            raise NotImplementedError(f"Dataset region for {dataset} is not implemented")
+def load_regions(dataset, duttagupta=False):
+    if dataset not in ["solar_home", "apartment", "l2rpn"]:
+        raise NotImplementedError(f"Dataset region for {dataset} is not implemented")
+    return process_regions_json(f"../data/{dataset}_{'duttagupta_' if duttagupta else ''}regions.json")
