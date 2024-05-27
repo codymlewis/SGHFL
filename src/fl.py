@@ -9,6 +9,8 @@ import chex
 import flax.linen as nn
 from flax.training import train_state
 import optax
+import scipy.stats as sps
+import sklearn.mixture as skm
 from sklearn import metrics
 
 import data_manager
@@ -332,6 +334,8 @@ def get_aggregator(aggregator, params=None):
             return space_sample_mean
         case "duttagupta":
             return fedavg
+        case "li":
+            return fedavg
         case _:
             raise NotImplementedError(f"{aggregator} not implemented")
 
@@ -396,6 +400,12 @@ class Client:
         self.state = self.state.replace(params=global_params)
         for _ in range(steps):
             idx = self.rng.choice(len(self.data), batch_size, replace=False)
+            loss, self.state = learner_step(self.state, self.data.X[idx], self.data.Y[idx])
+        return loss, self.state.params
+
+    def li_step(self, global_params, idx, batch_size=128, steps=1):
+        self.state = self.state.replace(params=global_params)
+        for _ in range(steps):
             loss, self.state = learner_step(self.state, self.data.X[idx], self.data.Y[idx])
         return loss, self.state.params
 
@@ -504,6 +514,25 @@ class Server:
 class MiddleServer:
     def __init__(self, global_params, clients, aggregator="fedavg"):
         self.clients = clients
+        if aggregator == "li":
+            self.alpha = np.ones(len(clients))
+            self.beta = np.ones_like(self.alpha)
+            for i, client in enumerate(clients):
+                if len(client.data) > 0:
+                    uniform_distribution = np.linspace(
+                        np.min(client.data.Y, axis=0),
+                        np.max(client.data.Y, axis=0),
+                        num=len(client.data),
+                    )
+                    self.beta[i] = np.mean([
+                        np.maximum(sps.wasserstein_distance(client.data.Y[:, i], uniform_distribution[:, i]), 1e-15)
+                        for i in range(client.data.Y.shape[-1])
+                    ])
+            self.rng = np.random.default_rng(42)
+            self.K = min(3, len(clients))
+            self.step = self.li_step
+        else:
+            self.step = self.normal_step
         self.aggregate = get_aggregator(aggregator, global_params)
 
     def reset(self):
@@ -526,11 +555,52 @@ class MiddleServer:
             predicted_forecasts.append(predicted_forecast)
         return true_forecasts, predicted_forecasts
 
-    def step(self, global_params, batch_size, steps=1):
+    def normal_step(self, global_params, batch_size, steps=1):
         all_params = []
         all_losses = []
         for client in self.clients:
             loss, params = client.step(global_params, batch_size, steps=steps)
+            all_params.append(params)
+            all_losses.append(loss)
+        new_params = self.aggregate(all_params)
+        new_loss = np.mean(all_losses)
+        return new_loss, new_params
+
+    def li_step(self, global_params, batch_size, steps=1):
+        # Calculate v_i and D_train
+        N = 50
+        client_data_idxs = []
+        client_v = np.zeros_like(self.alpha)
+        for c, client in enumerate(self.clients):
+            if len(client.data) <= batch_size:
+                client_data_idxs.append(np.arange(len(client.data)))
+                continue
+            entropy_vals = np.zeros(N)
+            client_data_idx = np.zeros((N, batch_size), dtype=int)
+            for i in range(N):
+                client_data_idx[i] = self.rng.choice(len(client.data), batch_size, replace=False)
+                x_i = client.data.X[client_data_idx[i]]
+                y_i = np.maximum(client.data.Y[client_data_idx[i]], 1e-15)
+                entropy_vals[i] = -np.mean(y_i * np.log2(y_i)) + \
+                    np.mean(y_i * np.log2(np.maximum(client.state.apply_fn(global_params, x_i), 1e-15)))
+            entropy_vals = entropy_vals.reshape(-1, 1)
+            bgm_model = skm.BayesianGaussianMixture()
+            bgm_model.fit(entropy_vals)
+            scores = bgm_model.score_samples(entropy_vals)
+            client_data_idxs.append(client_data_idx[np.argmax(scores)])
+            client_v[c] = np.max(scores)
+        self.alpha = np.maximum(self.alpha + client_v, 1e-15)
+        beta_vals = self.rng.beta(self.alpha, self.beta, size=len(self.clients))
+        if self.K == len(self.clients):
+            selected_clients = np.arange(len(self.clients))
+        else:
+            selected_clients = np.argpartition(beta_vals, self.K)[:self.K]
+        all_params = []
+        all_losses = []
+        for selected_client_idx in selected_clients:
+            loss, params = self.clients[selected_client_idx].li_step(
+                global_params, client_data_idxs[selected_client_idx], batch_size, steps=steps
+            )
             all_params.append(params)
             all_losses.append(loss)
         new_params = self.aggregate(all_params)
