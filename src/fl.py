@@ -567,6 +567,7 @@ class MiddleServer:
         return new_loss, new_params
 
     def li_step(self, global_params, batch_size, steps=1):
+        "https://ieeexplore.ieee.org/document/9874660"
         # Calculate v_i and D_train
         N = 50
         client_data_idxs = []
