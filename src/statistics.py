@@ -187,7 +187,7 @@ def create_plot(input_df: pl.DataFrame, filename: str, plot_type: str = "fairnes
             q = (
                 input_df.lazy()
                 .filter(
-                    (pl.col("server_aggregator") == server_aggregator) &
+                    pl.col("server_aggregator").starts_with(server_aggregator) &
                     (pl.col("middle_server_aggregator") == middle_server_aggregator)
                 )
                 .with_columns(pl.col("r2_score").clip(lower_bound=-0.05))
@@ -264,7 +264,7 @@ def create_smart_grid_plot(input_df: pl.DataFrame, dataset: str, plot_type: str,
     q = (
         input_df.lazy()
         .filter(
-            pl.col("server_aggregator").str.starts_with(server_aggregator) &
+            (pl.col("server_aggregator") == server_aggregator) &
             (pl.col("middle_server_aggregator") == middle_server_aggregator)
         )
         .with_columns(pl.col("r2_score").clip(lower_bound=-0.05))
@@ -335,13 +335,14 @@ def create_smart_grid_plot(input_df: pl.DataFrame, dataset: str, plot_type: str,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot experiment results.")
+    parser.add_argument("-f", "--file", type=str, default="results/results.csv", help="Results file to read.")
     parser.add_argument("-s", "--smart-grid", action="store_true", help="Plot the smart grid data.")
     args = parser.parse_args()
 
     os.makedirs("plots", exist_ok=True)
     for dataset in ["l2rpn", "apartment", "solar_home"]:
         q = (
-            pl.scan_csv("results/results.csv")
+            pl.scan_csv(args.file)
             .filter(pl.col("dataset") == dataset)
         )
         results_data = q.collect()

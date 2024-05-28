@@ -569,7 +569,7 @@ class MiddleServer:
     def li_step(self, global_params, batch_size, steps=1):
         "https://ieeexplore.ieee.org/document/9874660"
         # Calculate v_i and D_train
-        N = 50
+        N = 5
         client_data_idxs = []
         client_v = np.zeros_like(self.alpha)
         for c, client in enumerate(self.clients):
