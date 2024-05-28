@@ -1,4 +1,5 @@
 from typing import List
+import argparse
 import os
 import numpy as np
 import matplotlib as mpl
@@ -186,7 +187,7 @@ def create_plot(input_df: pl.DataFrame, filename: str, plot_type: str = "fairnes
             q = (
                 input_df.lazy()
                 .filter(
-                    pl.col("server_aggregator").str.starts_with(server_aggregator) &
+                    (pl.col("server_aggregator") == server_aggregator) &
                     (pl.col("middle_server_aggregator") == middle_server_aggregator)
                 )
                 .with_columns(pl.col("r2_score").clip(lower_bound=-0.05))
@@ -224,7 +225,7 @@ def create_plot(input_df: pl.DataFrame, filename: str, plot_type: str = "fairnes
                 labels = ["No Attack", "Empty", "Saturated Empty", "IPM", "Saturated IPM", "LIE", "Saturated LIE"]
             elif plot_type == "fairness_attack":
                 labels = [
-                    "Partipating No Attack",
+                    "Participating No Attack",
                     "Dropped No Attack",
                     "Participating IPM",
                     "Dropped IPM",
@@ -250,7 +251,93 @@ def create_plot(input_df: pl.DataFrame, filename: str, plot_type: str = "fairnes
     logger.info(f"Saved plot to {filename}")
 
 
+def create_smart_grid_plot(input_df: pl.DataFrame, dataset: str, plot_type: str, aggregator: str):
+    cmap_name = "Reds_r"
+    cmap = mpl.colormaps[cmap_name]
+    server_aggregator = aggregator
+    middle_server_aggregator = aggregator
+    if aggregator == "duttagupta":
+        middle_server_aggregator = "fedavg"
+    elif aggregator == "li":
+        server_aggregator = "fedavg"
+
+    q = (
+        input_df.lazy()
+        .filter(
+            pl.col("server_aggregator").str.starts_with(server_aggregator) &
+            (pl.col("middle_server_aggregator") == middle_server_aggregator)
+        )
+        .with_columns(pl.col("r2_score").clip(lower_bound=-0.05))
+        .with_columns(pl.col("dropped r2_score").clip(lower_bound=-0.05))
+    )
+    df = q.collect()
+    if plot_type == "fairness":
+        values = [
+            df.filter((pl.col("drop_point") == 1.1) & (pl.col("attack") == "none"))["r2_score"],
+            df.filter((pl.col("drop_point") == 0.4) & (pl.col("attack") == "none"))["r2_score"],
+            df.filter((pl.col("drop_point") == 0.4) & (pl.col("attack") == "none"))["dropped r2_score"],
+            df.filter((pl.col("drop_point") == 1.1) & (pl.col("attack") == "none"))["cosine_similarity"],
+        ]
+    elif plot_type == "attack":
+        values = find_attack_values(df)
+    else:
+        values = find_fairness_attack_values(df)
+
+    colours = [cmap(0.0) for _ in values]
+    for i, v in enumerate(values):
+        if v.shape[0] == 0:
+            values[i] = np.array([-0.05])
+        else:
+            colours[i] = cmap(np.mean(v.to_numpy()))
+    fig, ax = plt.subplots()
+    parts = ax.violinplot(values, showmeans=True)
+    for pc, colour in zip(parts['bodies'], colours):
+        pc.set_facecolor(colour)
+        pc.set_edgecolor("black")
+        pc.set_alpha(1)
+    parts['cmeans'].set_colors("black")
+    parts['cmins'].set_colors("black")
+    parts['cmaxes'].set_colors("black")
+    parts['cbars'].set_colors("black")
+    ax.set_ylim([-0.1, 1.1])
+    if plot_type == "fairness":
+        labels = ["Normal $r^2$", "Participating $r^2$", "Dropped $r^2$", "Cosine Similarity"]
+    elif plot_type == "attack":
+        labels = ["No Attack", "Empty", "Saturated Empty", "IPM", "Saturated IPM", "LIE", "Saturated LIE"]
+    elif plot_type == "fairness_attack":
+        labels = [
+            "Participating No Attack",
+            "Dropped No Attack",
+            "Participating IPM",
+            "Dropped IPM",
+            "Participating LIE",
+            "Dropped LIE",
+        ]
+    ax.set_xticks([i + 1 for i in range(len(values))], labels=labels, rotation='vertical')
+    filename = f"plots/smart_grid_{dataset}_{plot_type}_{aggregator}.pdf"
+    # fig.set_size_inches(10, 10)
+    fig.subplots_adjust(right=0.9)
+    # if aggregator != "fedavg":
+    #     ax.set_yticks([])
+    #     ax.set_yticklabels([])
+    # if aggregator == "ssfgm":
+    cbar_ax = fig.add_axes([0.92, 0.15, 0.03, 0.7])
+    plt.colorbar(
+        mpl.cm.ScalarMappable(norm=mpl.colors.Normalize(0, 1), cmap=cmap_name),
+        label='Mean',
+        cax=cbar_ax,
+    )
+    plt.savefig(filename, bbox_inches="tight")
+    plt.clf()
+    plt.close(fig)
+    logger.info(f"Saved plot to {filename}")
+
+
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Plot experiment results.")
+    parser.add_argument("-s", "--smart-grid", action="store_true", help="Plot the smart grid data.")
+    args = parser.parse_args()
+
     os.makedirs("plots", exist_ok=True)
     for dataset in ["l2rpn", "apartment", "solar_home"]:
         q = (
@@ -258,6 +345,12 @@ if __name__ == "__main__":
             .filter(pl.col("dataset") == dataset)
         )
         results_data = q.collect()
-        if len(results_data) > 0:
-            for plot_type in ["fairness", "attack", "fairness_attack"]:
+        if len(results_data) == 0:
+            continue
+
+        for plot_type in ["fairness", "attack", "fairness_attack"]:
+            if args.smart_grid:
+                for aggregator in ["fedavg", "duttagupta", "ssfgm"]:
+                    create_smart_grid_plot(results_data, dataset, plot_type, aggregator)
+            else:
                 create_plot(results_data, f"plots/{dataset}_{plot_type}.pdf", plot_type)
