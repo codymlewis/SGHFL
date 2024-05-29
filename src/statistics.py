@@ -187,7 +187,7 @@ def create_plot(input_df: pl.DataFrame, filename: str, plot_type: str = "fairnes
             q = (
                 input_df.lazy()
                 .filter(
-                    pl.col("server_aggregator").starts_with(server_aggregator) &
+                    pl.col("server_aggregator").str.starts_with(server_aggregator) &
                     (pl.col("middle_server_aggregator") == middle_server_aggregator)
                 )
                 .with_columns(pl.col("r2_score").clip(lower_bound=-0.05))
@@ -256,7 +256,9 @@ def create_smart_grid_plot(input_df: pl.DataFrame, dataset: str, plot_type: str,
     cmap = mpl.colormaps[cmap_name]
     server_aggregator = aggregator
     middle_server_aggregator = aggregator
-    if aggregator == "duttagupta":
+    if aggregator.find(":") >= 0:
+        server_aggregator, middle_server_aggregator = aggregator.split(":", maxsplit=2)
+    elif aggregator == "duttagupta":
         middle_server_aggregator = "fedavg"
     elif aggregator == "li":
         server_aggregator = "fedavg"
@@ -279,7 +281,13 @@ def create_smart_grid_plot(input_df: pl.DataFrame, dataset: str, plot_type: str,
             df.filter((pl.col("drop_point") == 1.1) & (pl.col("attack") == "none"))["cosine_similarity"],
         ]
     elif plot_type == "attack":
-        values = find_attack_values(df)
+        df = df.filter(pl.col("drop_point") == 1.1)
+        values = [
+            df.filter((pl.col("attack") == "none"))["r2_score"],
+            df.filter((pl.col("pct_saturation") == 0.5) & (pl.col("attack") == "empty"))["r2_score"],
+            df.filter((pl.col("pct_saturation") == 0.5) & (pl.col("attack") == "ipm"))["r2_score"],
+            df.filter((pl.col("pct_saturation") == 0.5) & (pl.col("attack") == "lie"))["r2_score"],
+        ]
     else:
         values = find_fairness_attack_values(df)
 
@@ -303,7 +311,7 @@ def create_smart_grid_plot(input_df: pl.DataFrame, dataset: str, plot_type: str,
     if plot_type == "fairness":
         labels = ["Normal $r^2$", "Participating $r^2$", "Dropped $r^2$", "Cosine Similarity"]
     elif plot_type == "attack":
-        labels = ["No Attack", "Empty", "Saturated Empty", "IPM", "Saturated IPM", "LIE", "Saturated LIE"]
+        labels = ["No Attack", "Empty", "IPM", "LIE"]
     elif plot_type == "fairness_attack":
         labels = [
             "Participating No Attack",
@@ -315,12 +323,7 @@ def create_smart_grid_plot(input_df: pl.DataFrame, dataset: str, plot_type: str,
         ]
     ax.set_xticks([i + 1 for i in range(len(values))], labels=labels, rotation='vertical')
     filename = f"plots/smart_grid_{dataset}_{plot_type}_{aggregator}.pdf"
-    # fig.set_size_inches(10, 10)
     fig.subplots_adjust(right=0.9)
-    # if aggregator != "fedavg":
-    #     ax.set_yticks([])
-    #     ax.set_yticklabels([])
-    # if aggregator == "ssfgm":
     cbar_ax = fig.add_axes([0.92, 0.15, 0.03, 0.7])
     plt.colorbar(
         mpl.cm.ScalarMappable(norm=mpl.colors.Normalize(0, 1), cmap=cmap_name),
@@ -351,7 +354,7 @@ if __name__ == "__main__":
 
         for plot_type in ["fairness", "attack", "fairness_attack"]:
             if args.smart_grid:
-                for aggregator in ["fedavg", "duttagupta", "ssfgm"]:
+                for aggregator in ["fedavg", "duttagupta", "li", "phocas:ssfgm", "ssfgm"]:
                     create_smart_grid_plot(results_data, dataset, plot_type, aggregator)
             else:
                 create_plot(results_data, f"plots/{dataset}_{plot_type}.pdf", plot_type)
