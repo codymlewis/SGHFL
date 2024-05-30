@@ -336,6 +336,8 @@ def get_aggregator(aggregator, params=None):
             return fedavg
         case "li":
             return fedavg
+        case "lissfgm":
+            return ssfgm
         case _:
             raise NotImplementedError(f"{aggregator} not implemented")
 
@@ -531,6 +533,9 @@ class MiddleServer:
             self.rng = np.random.default_rng(42)
             self.K = min(3, len(clients))
             self.step = self.li_step
+        elif aggregator == "lissfgm":
+            self.rng = np.random.default_rng(42)
+            self.step = self.lissfgm_step
         else:
             self.step = self.normal_step
         self.aggregate = get_aggregator(aggregator, global_params)
@@ -602,6 +607,36 @@ class MiddleServer:
             loss, params = self.clients[selected_client_idx].li_step(
                 global_params, client_data_idxs[selected_client_idx], batch_size, steps=steps
             )
+            all_params.append(params)
+            all_losses.append(loss)
+        new_params = self.aggregate(all_params)
+        new_loss = np.mean(all_losses)
+        return new_loss, new_params
+
+    def lissfgm_step(self, global_params, batch_size, steps=1):
+        N = 5
+        client_data_idxs = []
+        for c, client in enumerate(self.clients):
+            if len(client.data) <= batch_size:
+                client_data_idxs.append(np.arange(len(client.data)))
+                continue
+            entropy_vals = np.zeros(N)
+            client_data_idx = np.zeros((N, batch_size), dtype=int)
+            for i in range(N):
+                client_data_idx[i] = self.rng.choice(len(client.data), batch_size, replace=False)
+                x_i = client.data.X[client_data_idx[i]]
+                y_i = np.maximum(client.data.Y[client_data_idx[i]], 1e-15)
+                entropy_vals[i] = -np.mean(y_i * np.log2(y_i)) + \
+                    np.mean(y_i * np.log2(np.maximum(client.state.apply_fn(global_params, x_i), 1e-15)))
+            entropy_vals = entropy_vals.reshape(-1, 1)
+            bgm_model = skm.BayesianGaussianMixture()
+            bgm_model.fit(entropy_vals)
+            scores = bgm_model.score_samples(entropy_vals)
+            client_data_idxs.append(client_data_idx[np.argmax(scores)])
+        all_params = []
+        all_losses = []
+        for c, client in enumerate(self.clients):
+            loss, params = client.li_step(global_params, client_data_idxs[c], batch_size, steps=steps)
             all_params.append(params)
             all_losses.append(loss)
         new_params = self.aggregate(all_params)
