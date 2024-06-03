@@ -49,28 +49,29 @@ def aggregator_key(agg_name: str) -> int:
     return key
 
 
-def find_fairness_values(df: pl.DataFrame) -> List[pl.Series]:
+def find_fairness_values(df: pl.DataFrame, datset: str) -> List[pl.Series]:
+    value_col = "r2_score" if dataset == "l2rpn" else "mae"
     return [
         df.filter(
             ~pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 1.1) &
             (pl.col("attack") == "none")
-        )["r2_score"],
+        )[value_col],
         df.filter(
             ~pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 0.4) &
             (pl.col("attack") == "none")
-        )["r2_score"],
+        )[value_col],
         df.filter(
             ~pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 0.4) &
             (pl.col("attack") == "none")
-        )["dropped r2_score"],
+        )[f"dropped {value_col}"],
         df.filter(
             pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 0.4) &
             (pl.col("attack") == "none")
-        )["dropped r2_score"],
+        )[f"dropped {value_col}"],
         df.filter(
             ~pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 1.1) &
@@ -79,93 +80,96 @@ def find_fairness_values(df: pl.DataFrame) -> List[pl.Series]:
     ]
 
 
-def find_attack_values(df: pl.DataFrame) -> List[pl.Series]:
+def find_attack_values(df: pl.DataFrame, dataset: str) -> List[pl.Series]:
+    value_col = "r2_score" if dataset == "l2rpn" else "mae"
     return [
         df.filter(
             ~pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 1.1) &
             (pl.col("attack") == "none")
-        )["r2_score"],
+        )[value_col],
         df.filter(
             ~pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 1.1) &
             (pl.col("pct_saturation") == 0.5) &
             (pl.col("attack") == "empty")
-        )["r2_score"],
+        )[value_col],
         df.filter(
             ~pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 1.1) &
             (pl.col("pct_saturation") == 1.0) &
             (pl.col("attack") == "empty")
-        )["r2_score"],
+        )[value_col],
         df.filter(
             ~pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 1.1) &
             (pl.col("pct_saturation") == 0.5) &
             (pl.col("attack") == "ipm")
-        )["r2_score"],
+        )[value_col],
         df.filter(
             ~pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 1.1) &
             (pl.col("pct_saturation") == 1.0) &
             (pl.col("attack") == "ipm")
-        )["r2_score"],
+        )[value_col],
         df.filter(
             ~pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 1.1) &
             (pl.col("pct_saturation") == 0.5) &
             (pl.col("attack") == "lie")
-        )["r2_score"],
+        )[value_col],
         df.filter(
             ~pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 1.1) &
             (pl.col("pct_saturation") == 1.0) &
             (pl.col("attack") == "lie")
-        )["r2_score"],
+        )[value_col],
     ]
 
 
-def find_fairness_attack_values(df: pl.DataFrame) -> List[pl.Series]:
+def find_fairness_attack_values(df: pl.DataFrame, dataset: str) -> List[pl.Series]:
+    value_col = "r2_score" if dataset == "l2rpn" else "mae"
     return [
         df.filter(
             ~pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 0.4) &
             (pl.col("attack") == "none")
-        )["r2_score"],
+        )[value_col],
         df.filter(
             ~pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 0.4) &
             (pl.col("attack") == "none")
-        )["dropped r2_score"],
+        )[f"dropped {value_col}"],
         df.filter(
             ~pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 0.4) &
             (pl.col("pct_saturation") == 0.5) &
             (pl.col("attack") == "ipm")
-        )["r2_score"],
+        )[value_col],
         df.filter(
             ~pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 0.4) &
             (pl.col("pct_saturation") == 0.5) &
             (pl.col("attack") == "ipm")
-        )["dropped r2_score"],
+        )[f"dropped {value_col}"],
         df.filter(
             ~pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 0.4) &
             (pl.col("pct_saturation") == 0.5) &
             (pl.col("attack") == "lie")
-        )["r2_score"],
+        )[value_col],
         df.filter(
             ~pl.col("server_aggregator").str.ends_with("IF") &
             (pl.col("drop_point") == 0.4) &
             (pl.col("pct_saturation") == 0.5) &
             (pl.col("attack") == "lie")
-        )["dropped r2_score"],
+        )[f"dropped {value_col}"],
     ]
 
 
-def create_plot(input_df: pl.DataFrame, filename: str, plot_type: str = "fairness"):
-    cmap_name = "Reds_r"
+def create_plot(input_df: pl.DataFrame, dataset: str, plot_type: str = "fairness"):
+    cmap_name = "Reds_r" if dataset == "l2rpn" else "Reds"
+    value_col = "r2_score" if dataset == "l2rpn" else "mae"
     server_aggregators = sorted(
         [sa for sa in input_df["server_aggregator"].unique() if not sa.endswith("IF")],
         key=aggregator_key,
@@ -190,16 +194,16 @@ def create_plot(input_df: pl.DataFrame, filename: str, plot_type: str = "fairnes
                     pl.col("server_aggregator").str.starts_with(server_aggregator) &
                     (pl.col("middle_server_aggregator") == middle_server_aggregator)
                 )
-                .with_columns(pl.col("r2_score").clip(lower_bound=-0.05))
-                .with_columns(pl.col("dropped r2_score").clip(lower_bound=-0.05))
+                .with_columns(pl.col(f"{value_col}").clip(lower_bound=-0.05, upper_bound=1.0))
+                .with_columns(pl.col(f"dropped {value_col}").clip(lower_bound=-0.05, upper_bount=1.0))
             )
             df = q.collect()
             if plot_type == "fairness":
-                values = find_fairness_values(df)
+                values = find_fairness_values(df, dataset)
             elif plot_type == "attack":
-                values = find_attack_values(df)
+                values = find_attack_values(df, dataset)
             else:
-                values = find_fairness_attack_values(df)
+                values = find_fairness_attack_values(df, dataset)
             ax = next(axes)
             colours = [cmap(0.0) for _ in values]
             for i, v in enumerate(values):
@@ -218,8 +222,13 @@ def create_plot(input_df: pl.DataFrame, filename: str, plot_type: str = "fairnes
             parts['cbars'].set_colors("black")
             ax.set_ylim([-0.1, 1.1])
             if plot_type == "fairness":
+                value_col = "$r^2$" if dataset == "l2rpn" else "MAE"
                 labels = [
-                    "Normal $r^2$", "Participating $r^2$", "Dropped $r^2$", "Dropped with IF $r^2$", "Cosine Similarity"
+                    f"Normal {value_col}",
+                    f"Participating {value_col}",
+                    f"Dropped {value_col}",
+                    f"Dropped with IF {value_col}",
+                    "Cosine Similarity"
                 ]
             elif plot_type == "attack":
                 labels = ["No Attack", "Empty", "Saturated Empty", "IPM", "Saturated IPM", "LIE", "Saturated LIE"]
@@ -247,12 +256,13 @@ def create_plot(input_df: pl.DataFrame, filename: str, plot_type: str = "fairnes
         cax=cbar_ax,
     )
     plt.subplots_adjust(wspace=0.0, hspace=0.0)
+    filename = f"plots/{dataset}_{plot_type}.pdf"
     plt.savefig(filename, bbox_inches="tight")
     logger.info(f"Saved plot to {filename}")
 
 
 def create_smart_grid_plot(input_df: pl.DataFrame, dataset: str, plot_type: str, aggregator: str):
-    cmap_name = "Reds_r"
+    cmap_name = "Reds_r" if dataset == "l2rpn" else "Reds"
     cmap = mpl.colormaps[cmap_name]
     server_aggregator = aggregator
     middle_server_aggregator = aggregator
@@ -262,6 +272,7 @@ def create_smart_grid_plot(input_df: pl.DataFrame, dataset: str, plot_type: str,
         middle_server_aggregator = "fedavg"
     elif aggregator == "li":
         server_aggregator = "fedavg"
+    value_col = "r2_score" if dataset == "l2rpn" else "mae"
 
     q = (
         input_df.lazy()
@@ -269,27 +280,27 @@ def create_smart_grid_plot(input_df: pl.DataFrame, dataset: str, plot_type: str,
             (pl.col("server_aggregator") == server_aggregator) &
             (pl.col("middle_server_aggregator") == middle_server_aggregator)
         )
-        .with_columns(pl.col("r2_score").clip(lower_bound=-0.05))
-        .with_columns(pl.col("dropped r2_score").clip(lower_bound=-0.05))
+        .with_columns(pl.col(f"{value_col}").clip(lower_bound=-0.05, upper_bound=1.0))
+        .with_columns(pl.col(f"dropped {value_col}").clip(lower_bound=-0.05, upper_bound=1.0))
     )
     df = q.collect()
     if plot_type == "fairness":
         values = [
-            df.filter((pl.col("drop_point") == 1.1) & (pl.col("attack") == "none"))["r2_score"],
-            df.filter((pl.col("drop_point") == 0.4) & (pl.col("attack") == "none"))["r2_score"],
-            df.filter((pl.col("drop_point") == 0.4) & (pl.col("attack") == "none"))["dropped r2_score"],
+            df.filter((pl.col("drop_point") == 1.1) & (pl.col("attack") == "none"))[value_col],
+            df.filter((pl.col("drop_point") == 0.4) & (pl.col("attack") == "none"))[value_col],
+            df.filter((pl.col("drop_point") == 0.4) & (pl.col("attack") == "none"))[f"dropped {value_col}"],
             df.filter((pl.col("drop_point") == 1.1) & (pl.col("attack") == "none"))["cosine_similarity"],
         ]
     elif plot_type == "attack":
         df = df.filter(pl.col("drop_point") == 1.1)
         values = [
-            df.filter((pl.col("attack") == "none"))["r2_score"],
-            df.filter((pl.col("pct_saturation") == 0.5) & (pl.col("attack") == "empty"))["r2_score"],
-            df.filter((pl.col("pct_saturation") == 0.5) & (pl.col("attack") == "ipm"))["r2_score"],
-            df.filter((pl.col("pct_saturation") == 0.5) & (pl.col("attack") == "lie"))["r2_score"],
+            df.filter((pl.col("attack") == "none"))[value_col],
+            df.filter((pl.col("pct_saturation") == 0.5) & (pl.col("attack") == "empty"))[value_col],
+            df.filter((pl.col("pct_saturation") == 0.5) & (pl.col("attack") == "ipm"))[value_col],
+            df.filter((pl.col("pct_saturation") == 0.5) & (pl.col("attack") == "lie"))[value_col],
         ]
     else:
-        values = find_fairness_attack_values(df)
+        values = find_fairness_attack_values(df, dataset)
 
     colours = [cmap(0.0) for _ in values]
     for i, v in enumerate(values):
@@ -309,7 +320,13 @@ def create_smart_grid_plot(input_df: pl.DataFrame, dataset: str, plot_type: str,
     parts['cbars'].set_colors("black")
     ax.set_ylim([-0.1, 1.1])
     if plot_type == "fairness":
-        labels = ["Normal $r^2$", "Participating $r^2$", "Dropped $r^2$", "Cosine Similarity"]
+        colname = "$r^2$" if dataset == "l2rpn" else "MAE"
+        labels = [
+            f"Normal {colname}",
+            f"Participating {colname}",
+            f"Dropped {colname}",
+            "Cosine Similarity"
+        ]
     elif plot_type == "attack":
         labels = ["No Attack", "Empty", "IPM", "LIE"]
     elif plot_type == "fairness_attack":
@@ -354,7 +371,7 @@ if __name__ == "__main__":
 
         for plot_type in ["fairness", "attack", "fairness_attack"]:
             if args.smart_grid:
-                for aggregator in ["fedavg", "duttagupta", "li", "phocas:ssfgm", "ssfgm"]:
+                for aggregator in ["fedavg", "duttagupta", "li", "phocas:ssfgm", "ssfgm", "phocas:lissfgm", "lissfgm"]:
                     create_smart_grid_plot(results_data, dataset, plot_type, aggregator)
             else:
-                create_plot(results_data, f"plots/{dataset}_{plot_type}.pdf", plot_type)
+                create_plot(results_data, dataset, plot_type)
