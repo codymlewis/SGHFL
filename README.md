@@ -7,5 +7,4 @@ to set up the execution environment and download the required datasets.
 
 ## Run the experiments
 
-There are three sets of the experiments with independent codebases, contained in the folders `fmnist`, `power`, and `l2rpn`. Each of this contain a `scripts` folder
-which contains a shell script called `run_experiments.sh`, which can be executed to run the respective experiments.
+To run the experiments, change directory to the `src` folder and execute the two scripts with the `scripts` folder.
