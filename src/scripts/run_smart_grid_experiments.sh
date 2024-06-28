@@ -42,3 +42,5 @@ for dataset in "l2rpn" "apartment" "solar_home"; do
         done
     done
 done
+
+mv results/results.csv results/smart_grid_results.csv

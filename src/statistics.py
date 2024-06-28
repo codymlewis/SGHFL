@@ -195,7 +195,7 @@ def create_plot(input_df: pl.DataFrame, dataset: str, plot_type: str = "fairness
                     (pl.col("middle_server_aggregator") == middle_server_aggregator)
                 )
                 .with_columns(pl.col(f"{value_col}").clip(lower_bound=-0.05, upper_bound=1.0))
-                .with_columns(pl.col(f"dropped {value_col}").clip(lower_bound=-0.05, upper_bount=1.0))
+                .with_columns(pl.col(f"dropped {value_col}").clip(lower_bound=-0.05, upper_bound=1.0))
             )
             df = q.collect()
             if plot_type == "fairness":
@@ -222,12 +222,12 @@ def create_plot(input_df: pl.DataFrame, dataset: str, plot_type: str = "fairness
             parts['cbars'].set_colors("black")
             ax.set_ylim([-0.1, 1.1])
             if plot_type == "fairness":
-                value_col = "$r^2$" if dataset == "l2rpn" else "MAE"
+                value_name = "$r^2$" if dataset == "l2rpn" else "MAE"
                 labels = [
-                    f"Normal {value_col}",
-                    f"Participating {value_col}",
-                    f"Dropped {value_col}",
-                    f"Dropped with IF {value_col}",
+                    f"Normal {value_name}",
+                    f"Participating {value_name}",
+                    f"Dropped {value_name}",
+                    f"Dropped with IF {value_name}",
                     "Cosine Similarity"
                 ]
             elif plot_type == "attack":
@@ -355,14 +355,21 @@ def create_smart_grid_plot(input_df: pl.DataFrame, dataset: str, plot_type: str,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot experiment results.")
-    parser.add_argument("-f", "--file", type=str, default="results/results.csv", help="Results file to read.")
+    parser.add_argument("-f", "--file", type=str, default=None, help="Results file to read.")
     parser.add_argument("-s", "--smart-grid", action="store_true", help="Plot the smart grid data.")
     args = parser.parse_args()
 
     os.makedirs("plots", exist_ok=True)
-    for dataset in ["l2rpn", "apartment", "solar_home"]:
+    datasets = ["l2rpn", "apartment", "solar_home"] if args.smart_grid else ["l2rpn"]
+
+    if args.file is None:
+        results_filename = "results/smart_grid_results.csv" if args.smart_grid else "results/l2rpn_results.csv"
+    else:
+        results_filename = args.file
+
+    for dataset in datasets:
         q = (
-            pl.scan_csv(args.file)
+            pl.scan_csv(results_filename)
             .filter(pl.col("dataset") == dataset)
         )
         results_data = q.collect()
@@ -374,4 +381,4 @@ if __name__ == "__main__":
                 for aggregator in ["fedavg", "duttagupta", "li", "phocas:ssfgm", "ssfgm", "phocas:lissfgm", "lissfgm"]:
                     create_smart_grid_plot(results_data, dataset, plot_type, aggregator)
             else:
-                create_plot(results_data, dataset, plot_type)
+                create_plot(q.collect(), dataset, plot_type)
