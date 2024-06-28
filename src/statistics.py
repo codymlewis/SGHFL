@@ -381,4 +381,4 @@ if __name__ == "__main__":
                 for aggregator in ["fedavg", "duttagupta", "li", "phocas:ssfgm", "ssfgm", "phocas:lissfgm", "lissfgm"]:
                     create_smart_grid_plot(results_data, dataset, plot_type, aggregator)
             else:
-                create_plot(q.collect(), dataset, plot_type)
+                create_plot(results_data, dataset, plot_type)
