@@ -66,14 +66,14 @@ if __name__ == "__main__":
     sensitivity_data = pd.read_csv("results/sensitivity.csv")
     sensitivity_data = sensitivity_data.drop_duplicates()
 
-    r_data = sensitivity_data.query("`attack` == 'lie'")
-    r_data = r_data.drop(
+    rho_data = sensitivity_data.query("`attack` == 'lie'")
+    rho_data = rho_data.drop(
         columns=["attack", "seed", "repetitions", "npoints", "dimensions"]
     )
-    print("r data")
-    print_latex(r_data.corr())
-    create_plot(r_data, "r", "error", "padversaries", "r_err.pdf")
-    create_plot(r_data, "r", "improvement", "padversaries", "r_imp.pdf")
+    print("rho data")
+    print_latex(rho_data.corr())
+    create_plot(rho_data, "rho", "error", "padversaries", "rho_err.pdf")
+    create_plot(rho_data, "rho", "improvement", "padversaries", "rho_imp.pdf")
     print()
 
     ablation_data = pd.read_csv("results/ablation.csv")

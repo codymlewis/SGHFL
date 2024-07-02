@@ -1,16 +1,9 @@
 __pycache__/
-.venv/
-.conda/
-.empty/
-.vscode/
+venv/
 data/
 results/
 agent/
 *.bak
 *.pkl
 .ipynb_checkpoints/
-.virtual_documents
-tags
-Session.vim
-poetry.lock
 plots/

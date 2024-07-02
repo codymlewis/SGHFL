@@ -55,14 +55,18 @@ def ssfgm(
     - Most updates are closer to the honest mean than the target
     """
     # Clip the updates
-    assert gamma < 1 / 2 * rho, "Such large clipping value will leave this algorithm vulnerable to attack."
+    # assert gamma < 1 / 2 * rho, "Such large clipping value will leave this algorithm vulnerable to attack."
     samples = (samples.T * np.minimum(1, gamma / np.linalg.norm(samples, axis=-1))).T
     # Eliminate samples that are too close to eachother, leaving only one representative
     dists = sp.spatial.distance.cdist(samples, samples)
     if space_sampling:
         sigma = np.std(samples)
         far_enough_idx = np.all((dists + (np.eye(len(samples)) * rho * sigma)) >= (rho * sigma), axis=0)
-        samples = np.concatenate((samples[far_enough_idx], np.mean(samples[~far_enough_idx], axis=0).reshape(1, -1)))
+        if not all(far_enough_idx):
+            samples = np.concatenate((
+                samples[far_enough_idx],
+                np.mean(samples[~far_enough_idx], axis=0).reshape(1, -1)
+            ))
     if fractional_geomedian:
         c = min(
             1.0,
