@@ -20,7 +20,7 @@
     if [ ! -d data/ ]; then
       cd data_processing/
       python acquire.py
-      cd ../../
+      cd ../
     fi
     bash
   '';
