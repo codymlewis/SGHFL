@@ -2,8 +2,7 @@
 
 ## Setup
 
-Install [Python 3.8+](python.org) and [Python Poetry](python-poetry.org) to your system, then run the `./Configure.sh` shell script in the root of this repository
-to set up the execution environment and download the required datasets.
+Either install the [Nix package manager](https://nixos.org) and run the `nix-shell` command in the root of this repository, or install [Python 3.11+](https://www.python.org) and the libraries with the `pip install -r requirements.txt` command.
 
 ## Run the experiments
 
