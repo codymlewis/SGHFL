@@ -1,16 +1,3 @@
-# let
-#   pkgs = import <nixpkgs> {};
-# in pkgs.mkShell {
-#   packages = [
-#     pkgs.python3
-#     pkgs.poetry
-#     pkgs.zlib
-#   ];
-#   shellHook = ''
-#     poetry install
-#     poetry shell
-#   '';
-# }
 { pkgs ? import <nixpkgs> {} }:
 (pkgs.buildFHSUserEnv {
   name = "smahfl";
