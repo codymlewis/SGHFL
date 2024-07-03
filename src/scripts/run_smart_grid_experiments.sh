@@ -15,7 +15,7 @@ for dataset in "l2rpn" "apartment" "solar_home"; do
     fi
     
     for attack in "none" "empty" "lie" "ipm"; do
-        for aggregator in "fedavg" "duttagupta" "li" "ssfgm" "phocas:ssfgm" "lissfgm" "phocas:lissfgm"; do
+        for aggregator in "fedavg" "duttagupta" "li" "ssfgm" "phocas:ssfgm" "ssfgm:mrcs" "lissfgm" "phocas:lissfgm"; do
             server_aggregator=$aggregator
             ms_aggregator=$aggregator
             if [ $aggregator == "duttagupta" ]; then
@@ -26,6 +26,9 @@ for dataset in "l2rpn" "apartment" "solar_home"; do
             if [ $aggregator == "phocas:ssfgm" ]; then
                 server_aggregator="phocas"
                 ms_aggregator="ssfgm"
+            elif [ $aggregator == "ssfgm:mrcs" ]; then
+                server_aggregator="ssfgm"
+                ms_aggregator="mrcs"
             elif [ $aggregator == "phocas:lissfgm" ]; then
                 server_aggregator="phocas"
                 ms_aggregator="lissfgm"

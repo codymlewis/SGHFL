@@ -378,7 +378,7 @@ if __name__ == "__main__":
 
         for plot_type in ["fairness", "attack", "fairness_attack"]:
             if args.smart_grid:
-                for aggregator in ["fedavg", "duttagupta", "li", "phocas:ssfgm", "ssfgm", "phocas:lissfgm", "lissfgm"]:
+                for aggregator in ["fedavg", "duttagupta", "li", "phocas:ssfgm", "ssfgm", "ssfgm:mrcs", "phocas:lissfgm", "lissfgm"]:
                     create_smart_grid_plot(results_data, dataset, plot_type, aggregator)
             else:
                 create_plot(results_data, dataset, plot_type)
