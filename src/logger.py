@@ -2,7 +2,7 @@ import logging
 from tqdm import tqdm
 
 
-logger = logging.getLogger("SmaHFL")
+logger = logging.getLogger("SGHFL")
 logger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler()
 ch.setLevel(logging.DEBUG)
