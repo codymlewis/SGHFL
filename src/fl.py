@@ -17,7 +17,7 @@ import data_manager
 from logger import logger
 
 
-class ForecastNet(nn.Module):
+class FCN(nn.Module):
     "Neural network for predicting future power load and generation in L2RPN"
     classes: int = 2
 
@@ -29,6 +29,22 @@ class ForecastNet(nn.Module):
         x = nn.relu(x)
         x = nn.Dense(self.classes)(x)
         return x
+
+class CNN(nn.Module):
+    classes: int = 2
+
+    @nn.compact
+    def __call__(self, x):
+        x = nn.Conv(16, (5,), strides=2)(x)
+        x = nn.relu(x)
+        x = nn.Conv(32, (5,), strides=2)(x)
+        x = nn.relu(x)
+        x = jnp.reshape(x, (x.shape[0], -1))
+        x = nn.Dense(self.classes)(x)
+        return x
+
+
+# TODO: LSTM, GRU
 
 
 class PowerNet(nn.Module):

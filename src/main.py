@@ -45,12 +45,20 @@ def l2rpn_setup(
     batch_size,
     server_aggregator="fedavg",
     middle_server_aggregator="fedavg",
+    model="FCN",
     attack="",
     pct_adversaries=0.5,
     pct_saturation=1.0,
     seed=0,
 ):
-    forecast_model = fl.ForecastNet()
+    match model:
+        case "FCN":
+            forecast_model = fl.FCN()
+        case "CNN":
+            forecast_model = fl.CNN()
+        case _:
+            raise NotImplementedError(f"Model {model} is not implemented")
+
     global_params = forecast_model.init(jax.random.PRNGKey(seed), jnp.zeros((1, 2 * forecast_window + 2)))
     substation_data = load_file('../data/l2rpn_substation.safetensors')
     substation_ids = substation_data['ids']
@@ -274,6 +282,8 @@ if __name__ == "__main__":
                         help="Aggregation algorithm to use at the FL server.")
     parser.add_argument("--middle-server-aggregator", type=str, default="fedavg",
                         help="Aggregation algorithm to use at the FL middle server.")
+    parser.add_argument("--model", type=str, default="FCN",
+                        help="Model architecture to train.")
     parser.add_argument("--attack", type=str, default="none",
                         help="Perform model poisoning on the federated learning model.")
     parser.add_argument('--drop-point', type=float, default=1.1,
@@ -299,6 +309,7 @@ if __name__ == "__main__":
             args.batch_size,
             server_aggregator=args.server_aggregator,
             middle_server_aggregator=args.middle_server_aggregator,
+            model=args.model,
             attack=args.attack,
             pct_adversaries=args.pct_adversaries,
             pct_saturation=args.pct_saturation,

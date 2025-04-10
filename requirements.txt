@@ -16,8 +16,3 @@ stable-baselines3==2.2.1
 jaxopt==0.8.3
 datasets==2.16.1
 polars==0.20.23
-autopep8==2.0.4
-jedi==0.19.1
-flake8==6.1.0
-python-lsp-server==1.8.0
-yapf==0.40.1
