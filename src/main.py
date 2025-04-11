@@ -45,17 +45,25 @@ def l2rpn_setup(
     batch_size,
     server_aggregator="fedavg",
     middle_server_aggregator="fedavg",
-    model="FCN",
+    model="FFN",
     attack="",
     pct_adversaries=0.5,
     pct_saturation=1.0,
     seed=0,
 ):
     match model:
-        case "FCN":
-            forecast_model = fl.FCN()
+        case "FFN":
+            forecast_model = fl.FFN()
         case "CNN":
             forecast_model = fl.CNN()
+        case "LSTM":
+            forecast_model = fl.LSTM()
+        case "GRU":
+            forecast_model = fl.GRU()
+        case "BiGRU":
+            forecast_model = fl.BiGRU()
+        case "Attention":
+            forecast_model = fl.Attention()
         case _:
             raise NotImplementedError(f"Model {model} is not implemented")
 
@@ -282,7 +290,7 @@ if __name__ == "__main__":
                         help="Aggregation algorithm to use at the FL server.")
     parser.add_argument("--middle-server-aggregator", type=str, default="fedavg",
                         help="Aggregation algorithm to use at the FL middle server.")
-    parser.add_argument("--model", type=str, default="FCN",
+    parser.add_argument("--model", type=str, default="FFN",
                         help="Model architecture to train.")
     parser.add_argument("--attack", type=str, default="none",
                         help="Perform model poisoning on the federated learning model.")

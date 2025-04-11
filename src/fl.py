@@ -17,7 +17,7 @@ import data_manager
 from logger import logger
 
 
-class FCN(nn.Module):
+class FFN(nn.Module):
     "Neural network for predicting future power load and generation in L2RPN"
     classes: int = 2
 
@@ -30,22 +30,197 @@ class FCN(nn.Module):
         x = nn.Dense(self.classes)(x)
         return x
 
+
 class CNN(nn.Module):
     classes: int = 2
 
     @nn.compact
     def __call__(self, x):
-        x = nn.Conv(16, (5,), strides=2)(x)
-        x = nn.relu(x)
-        x = nn.Conv(32, (5,), strides=2)(x)
-        x = nn.relu(x)
-        x = jnp.reshape(x, (x.shape[0], -1))
+        x = jnp.reshape(x, x.shape + (1,))
+        x = nn.Conv(4, (3,), strides=2)(x)
+        x = nn.max_pool(x, (2,), strides=(2,))
+        x = nn.gelu(x)
+        x = nn.Conv(8, (3,), strides=2)(x)
+        x = nn.max_pool(x, (2,), strides=(2,))
+        x = nn.gelu(x)
+
+        if len(x.shape) == 3:
+            x = jnp.reshape(x, (x.shape[0], -1))
+        else:
+            x = jnp.reshape(x, -1)
+
         x = nn.Dense(self.classes)(x)
         return x
 
 
-# TODO: LSTM, GRU
+class LSTM(nn.Module):
+    classes: int = 2
 
+    @nn.compact
+    def __call__(self, x):
+        seq_len = 10
+        hidden_size = 5
+
+        if len(x.shape) == 2:
+            x = jnp.reshape(x, (x.shape[0], seq_len, -1))
+        else:
+            x = jnp.reshape(x, (1, seq_len, -1))
+
+        x = nn.RNN(nn.OptimizedLSTMCell(hidden_size), return_carry=False)(x)
+
+        if x.shape[0] > 1:
+            x = jnp.reshape(x, (x.shape[0], -1))
+        else:
+            x = jnp.reshape(x, -1)
+
+        x = nn.Dense(self.classes)(x)
+        return x
+
+
+class BiLSTM(nn.Module):
+    classes: int = 2
+
+    @nn.compact
+    def __call__(self, x):
+        seq_len = 10
+        hidden_size = 5
+
+        if len(x.shape) == 2:
+            x = jnp.reshape(x, (x.shape[0], seq_len, -1))
+        else:
+            x = jnp.reshape(x, (1, seq_len, -1))
+
+        x = nn.Bidirectional(
+            nn.RNN(nn.OptimizedLSTMCell(hidden_size), return_carry=True),
+            nn.RNN(nn.OptimizedLSTMCell(hidden_size), return_carry=True),
+            return_carry=False
+        )(x)
+
+        if x.shape[0] > 1:
+            x = jnp.reshape(x, (x.shape[0], -1))
+        else:
+            x = jnp.reshape(x, -1)
+
+        x = nn.Dense(self.classes)(x)
+        return x
+
+
+class GRU(nn.Module):
+    classes: int = 2
+
+    @nn.compact
+    def __call__(self, x):
+        seq_len = 10
+        hidden_size = 5
+
+        if len(x.shape) == 2:
+            x = jnp.reshape(x, (x.shape[0], seq_len, -1))
+        else:
+            x = jnp.reshape(x, (1, seq_len, -1))
+
+        x = nn.RNN(nn.GRUCell(hidden_size), return_carry=False)(x)
+
+        if x.shape[0] > 1:
+            x = jnp.reshape(x, (x.shape[0], -1))
+        else:
+            x = jnp.reshape(x, -1)
+
+        x = nn.Dense(self.classes)(x)
+        return x
+
+
+class BiGRU(nn.Module):
+    classes: int = 2
+
+    @nn.compact
+    def __call__(self, x):
+        seq_len = 10
+        hidden_size = 5
+
+        if len(x.shape) == 2:
+            x = jnp.reshape(x, (x.shape[0], seq_len, -1))
+        else:
+            x = jnp.reshape(x, (1, seq_len, -1))
+
+        x = nn.Bidirectional(
+            nn.RNN(nn.GRUCell(hidden_size), return_carry=True),
+            nn.RNN(nn.GRUCell(hidden_size), return_carry=True),
+            return_carry=False
+        )(x)
+
+        if x.shape[0] > 1:
+            x = jnp.reshape(x, (x.shape[0], -1))
+        else:
+            x = jnp.reshape(x, -1)
+
+        x = nn.Dense(self.classes)(x)
+        return x
+
+
+class Attention(nn.Module):
+    classes: int = 2
+
+    @nn.compact
+    def __call__(self, x):
+        x = jnp.reshape(x, x.shape + (1,))
+        qkv_shape = x.shape[1:] if len(x.shape) == 3 else x.shape
+        attention_layer = nn.MultiHeadDotProductAttention(num_heads=8, qkv_features=8)
+        q = self.param("query", nn.initializers.uniform(), qkv_shape)
+        k = self.param("key", nn.initializers.uniform(), qkv_shape)
+
+        if len(x.shape) == 3:
+            x = jax.vmap(lambda x: attention_layer(q, k, x))(x)
+        else:
+            x = attention_layer(q, k, x)
+
+        x = jnp.reshape(x, (x.shape[0], -1) if len(x.shape) == 3 else -1)
+
+        x = nn.Dense(self.classes)(x)
+        return x
+
+
+# TODO: CNN-BiGRU, BiGRU-Attention, CNN-BiGRU-Attention
+
+class CNN_BiGRU(nn.Module):
+    classes: int = 2
+
+    @nn.compact
+    def __call__(self, x):
+        seq_len = 10
+        hidden_size = 5
+
+        x = jnp.reshape(x, x.shape + (1,))
+        x = nn.Conv(4, (3,), strides=2)(x)
+        x = nn.max_pool(x, (2,), strides=(2,))
+        x = nn.gelu(x)
+        x = nn.Conv(8, (3,), strides=2)(x)
+        x = nn.max_pool(x, (2,), strides=(2,))
+        x = nn.gelu(x)
+
+        if len(x.shape) == 3:
+            x = jnp.reshape(x, (x.shape[0], -1))
+        else:
+            x = jnp.reshape(x, -1)
+
+        x = nn.Dense(self.classes)(x)
+        if len(x.shape) == 2:
+            x = jnp.reshape(x, (x.shape[0], seq_len, -1))
+        else:
+            x = jnp.reshape(x, (1, seq_len, -1))
+
+        x = nn.Bidirectional(
+            nn.RNN(nn.GRUCell(hidden_size), return_carry=True),
+            nn.RNN(nn.GRUCell(hidden_size), return_carry=True),
+            return_carry=False
+        )(x)
+
+        if x.shape[0] > 1:
+            x = jnp.reshape(x, (x.shape[0], -1))
+        else:
+            x = jnp.reshape(x, -1)
+
+        x = nn.Dense(self.classes)(x)
+        return x
 
 class PowerNet(nn.Module):
     "Neural network for predicting future power load and generation in solar_home and apartment"
