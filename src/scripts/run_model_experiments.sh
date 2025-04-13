@@ -7,7 +7,7 @@ run_many_seeds () {
     done
 }
 
-for model in "FFN" "CNN" "GRU" "LSTM" "Attention"; do
+for model in "FFN" "CNN" "GRU" "LSTM" "Attention" "BiGRU" "CNN_BiGRU" "BiGRU_Attention" "CNN_BiGRU_Attention"; do
     rounds="50"
 
     for attack in "none" "empty" "lie" "ipm"; do

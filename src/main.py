@@ -64,6 +64,12 @@ def l2rpn_setup(
             forecast_model = fl.BiGRU()
         case "Attention":
             forecast_model = fl.Attention()
+        case "CNN_BiGRU":
+            forecast_model = fl.CNN_BiGRU()
+        case "BiGRU_Attention":
+            forecast_model = fl.BiGRU_Attention()
+        case "CNN_BiGRU_Attention":
+            forecast_model = fl.CNN_BiGRU_Attention()
         case _:
             raise NotImplementedError(f"Model {model} is not implemented")
 

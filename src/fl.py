@@ -179,48 +179,36 @@ class Attention(nn.Module):
         return x
 
 
-# TODO: CNN-BiGRU, BiGRU-Attention, CNN-BiGRU-Attention
-
 class CNN_BiGRU(nn.Module):
     classes: int = 2
 
     @nn.compact
     def __call__(self, x):
-        seq_len = 10
-        hidden_size = 5
-
-        x = jnp.reshape(x, x.shape + (1,))
-        x = nn.Conv(4, (3,), strides=2)(x)
-        x = nn.max_pool(x, (2,), strides=(2,))
-        x = nn.gelu(x)
-        x = nn.Conv(8, (3,), strides=2)(x)
-        x = nn.max_pool(x, (2,), strides=(2,))
-        x = nn.gelu(x)
-
-        if len(x.shape) == 3:
-            x = jnp.reshape(x, (x.shape[0], -1))
-        else:
-            x = jnp.reshape(x, -1)
-
-        x = nn.Dense(self.classes)(x)
-        if len(x.shape) == 2:
-            x = jnp.reshape(x, (x.shape[0], seq_len, -1))
-        else:
-            x = jnp.reshape(x, (1, seq_len, -1))
-
-        x = nn.Bidirectional(
-            nn.RNN(nn.GRUCell(hidden_size), return_carry=True),
-            nn.RNN(nn.GRUCell(hidden_size), return_carry=True),
-            return_carry=False
-        )(x)
-
-        if x.shape[0] > 1:
-            x = jnp.reshape(x, (x.shape[0], -1))
-        else:
-            x = jnp.reshape(x, -1)
-
-        x = nn.Dense(self.classes)(x)
+        x = CNN(10)(x)
+        x = BiGRU(self.classes)(x)
         return x
+
+
+class BiGRU_Attention(nn.Module):
+    classes: int = 2
+
+    @nn.compact
+    def __call__(self, x):
+        x = BiGRU(10)(x)
+        x = Attention(self.classes)(x)
+        return x
+
+
+class CNN_BiGRU_Attention(nn.Module):
+    classes: int = 2
+
+    @nn.compact
+    def __call__(self, x):
+        x = CNN(10)(x)
+        x = BiGRU(10)(x)
+        x = Attention(self.classes)(x)
+        return x
+
 
 class PowerNet(nn.Module):
     "Neural network for predicting future power load and generation in solar_home and apartment"
