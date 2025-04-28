@@ -49,7 +49,7 @@ def aggregator_key(agg_name: str) -> int:
     return key
 
 
-def find_fairness_values(df: pl.DataFrame, datset: str) -> List[pl.Series]:
+def find_fairness_values(df: pl.DataFrame, dataset: str) -> List[pl.Series]:
     value_col = "r2_score" if dataset == "l2rpn" else "mae"
     return [
         df.filter(
@@ -261,7 +261,7 @@ def create_plot(input_df: pl.DataFrame, dataset: str, plot_type: str = "fairness
     logger.info(f"Saved plot to {filename}")
 
 
-def create_smart_grid_plot(input_df: pl.DataFrame, dataset: str, plot_type: str, aggregator: str):
+def create_smart_grid_plot(input_df: pl.DataFrame, dataset: str, plot_type: str, aggregator: str, filename_suffix: str = ""):
     cmap_name = "Reds_r" if dataset == "l2rpn" else "Reds"
     cmap = mpl.colormaps[cmap_name]
     server_aggregator = aggregator
@@ -339,7 +339,7 @@ def create_smart_grid_plot(input_df: pl.DataFrame, dataset: str, plot_type: str,
             "Dropped LIE",
         ]
     ax.set_xticks([i + 1 for i in range(len(values))], labels=labels, rotation='vertical')
-    filename = f"plots/smart_grid_{dataset}_{plot_type}_{aggregator}.pdf"
+    filename = f"plots/smart_grid_{dataset}_{plot_type}_{aggregator}{filename_suffix}.pdf"
     fig.subplots_adjust(right=0.9)
     cbar_ax = fig.add_axes([0.92, 0.15, 0.03, 0.7])
     plt.colorbar(
@@ -357,6 +357,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot experiment results.")
     parser.add_argument("-f", "--file", type=str, default=None, help="Results file to read.")
     parser.add_argument("-s", "--smart-grid", action="store_true", help="Plot the smart grid data.")
+    parser.add_argument("-m", "--models", action="store_true", help="Plot the results for model experiments.")
     args = parser.parse_args()
 
     os.makedirs("plots", exist_ok=True)
@@ -379,6 +380,14 @@ if __name__ == "__main__":
         for plot_type in ["fairness", "attack", "fairness_attack"]:
             if args.smart_grid:
                 for aggregator in ["fedavg", "duttagupta", "li", "phocas:ssfgm", "ssfgm", "ssfgm:mrcs", "phocas:lissfgm", "lissfgm"]:
-                    create_smart_grid_plot(results_data, dataset, plot_type, aggregator)
+                    if args.models:
+                        for model in ["FFN", "CNN", "LSTM", "Attention"]:
+                            model_results_data = (
+                                results_data.lazy()
+                                .filter(pl.col("model") == model)
+                            ).collect()
+                            create_smart_grid_plot(model_results_data, dataset, plot_type, aggregator, filename_suffix=f"_{model}")
+                    else:
+                        create_smart_grid_plot(results_data, dataset, plot_type, aggregator)
             else:
                 create_plot(results_data, dataset, plot_type)
