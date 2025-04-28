@@ -1,5 +1,6 @@
 __pycache__/
 venv/
+.venv/
 data/
 results/
 agent/
@@ -7,3 +8,4 @@ agent/
 *.pkl
 .ipynb_checkpoints/
 plots/
+.python-version

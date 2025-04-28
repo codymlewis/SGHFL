@@ -7,11 +7,11 @@ run_many_seeds () {
     done
 }
 
-for model in "FFN" "CNN" "LSTM" "Attention" "BiGRU" "CNN_BiGRU" "BiGRU_Attention" "CNN_BiGRU_Attention"; do
+for model in "FFN" "CNN" "LSTM" "Attention"; do
     rounds="50"
 
     for attack in "none" "empty" "lie" "ipm"; do
-        for aggregator in "fedavg" "phocas:ssfgm" "phocas:lissfgm"; do
+        for aggregator in "fedavg" "phocas:ssfgm"; do
             server_aggregator=$aggregator
             ms_aggregator=$aggregator
 

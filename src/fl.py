@@ -77,65 +77,13 @@ class LSTM(nn.Module):
         return x
 
 
-class BiLSTM(nn.Module):
-    classes: int = 2
-
-    @nn.compact
-    def __call__(self, x):
-        seq_len = 10
-        hidden_size = 5
-
-        if len(x.shape) == 2:
-            x = jnp.reshape(x, (x.shape[0], seq_len, -1))
-        else:
-            x = jnp.reshape(x, (1, seq_len, -1))
-
-        x = nn.Bidirectional(
-            nn.RNN(nn.OptimizedLSTMCell(hidden_size), return_carry=True),
-            nn.RNN(nn.OptimizedLSTMCell(hidden_size), return_carry=True),
-            return_carry=False
-        )(x)
-
-        if x.shape[0] > 1:
-            x = jnp.reshape(x, (x.shape[0], -1))
-        else:
-            x = jnp.reshape(x, -1)
-
-        x = nn.Dense(self.classes)(x)
-        return x
-
-
-class GRU(nn.Module):
-    classes: int = 2
-
-    @nn.compact
-    def __call__(self, x):
-        seq_len = 10
-        hidden_size = 5
-
-        if len(x.shape) == 2:
-            x = jnp.reshape(x, (x.shape[0], seq_len, -1))
-        else:
-            x = jnp.reshape(x, (1, seq_len, -1))
-
-        x = nn.RNN(nn.GRUCell(hidden_size), return_carry=False)(x)
-
-        if x.shape[0] > 1:
-            x = jnp.reshape(x, (x.shape[0], -1))
-        else:
-            x = jnp.reshape(x, -1)
-
-        x = nn.Dense(self.classes)(x)
-        return x
-
-
 class BiGRU(nn.Module):
-    classes: int = 2
+    num_outputs: int = 2
 
     @nn.compact
     def __call__(self, x):
         seq_len = 10
-        hidden_size = 5
+        hidden_size = 20
 
         if len(x.shape) == 2:
             x = jnp.reshape(x, (x.shape[0], seq_len, -1))
@@ -153,18 +101,18 @@ class BiGRU(nn.Module):
         else:
             x = jnp.reshape(x, -1)
 
-        x = nn.Dense(self.classes)(x)
+        x = nn.Dense(self.num_outputs)(x)
         return x
 
 
 class Attention(nn.Module):
-    classes: int = 2
+    num_outputs: int = 2
 
     @nn.compact
     def __call__(self, x):
         x = jnp.reshape(x, x.shape + (1,))
         qkv_shape = x.shape[1:] if len(x.shape) == 3 else x.shape
-        attention_layer = nn.MultiHeadDotProductAttention(num_heads=8, qkv_features=8)
+        attention_layer = nn.MultiHeadDotProductAttention(num_heads=4, qkv_features=4)
         q = self.param("query", nn.initializers.uniform(), qkv_shape)
         k = self.param("key", nn.initializers.uniform(), qkv_shape)
 
@@ -175,27 +123,7 @@ class Attention(nn.Module):
 
         x = jnp.reshape(x, (x.shape[0], -1) if len(x.shape) == 3 else -1)
 
-        x = nn.Dense(self.classes)(x)
-        return x
-
-
-class CNN_BiGRU(nn.Module):
-    classes: int = 2
-
-    @nn.compact
-    def __call__(self, x):
-        x = CNN(10)(x)
-        x = BiGRU(self.classes)(x)
-        return x
-
-
-class BiGRU_Attention(nn.Module):
-    classes: int = 2
-
-    @nn.compact
-    def __call__(self, x):
-        x = BiGRU(10)(x)
-        x = Attention(self.classes)(x)
+        x = nn.Dense(self.num_outputs)(x)
         return x
 
 
@@ -204,8 +132,8 @@ class CNN_BiGRU_Attention(nn.Module):
 
     @nn.compact
     def __call__(self, x):
-        x = CNN(10)(x)
-        x = BiGRU(10)(x)
+        x = CNN(9)(x)
+        x = BiGRU(6)(x)
         x = Attention(self.classes)(x)
         return x
 
@@ -534,10 +462,19 @@ class Client:
             self.forecast_window = info['forecast_window']
         if data is not None:
             self.data = data
+
+        match model:
+            case FFN():
+                learning_rate = 0.01
+            case LSTM():
+                learning_rate = 0.05
+            case _:
+                learning_rate = 0.1
+
         self.state = train_state.TrainState.create(
             apply_fn=model.apply,
             params=model.init(jax.random.PRNGKey(0), self.data.X[:1]),
-            tx=optax.adam(0.01),
+            tx=optax.adam(learning_rate),
         )
         self.id = client_id
         self.rng = np.random.default_rng(seed)

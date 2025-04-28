@@ -1,0 +1,26 @@
+[project]
+name = "SGHFL"
+version = "0.1.0"
+description = "Smart grid hierarchical federated learning experiments"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "chex>=0.1.89",
+    "datasets>=3.5.0",
+    "einops>=0.8.1",
+    "flax>=0.10.6",
+    "grid2op>=1.11.0",
+    "jax>=0.6.0",
+    "jaxopt>=0.8.5",
+    "l2rpn-baselines>=0.8.0",
+    "lightsim2grid>=0.10.2",
+    "numba>=0.61.2",
+    "numpy>=2.2.5",
+    "optax>=0.2.4",
+    "pandapower>=2.14.7",
+    "polars>=1.28.1",
+    "safetensors>=0.5.3",
+    "scikit-learn>=1.6.1",
+    "stable-baselines3>=2.6.0",
+    "tqdm>=4.67.1",
+]
