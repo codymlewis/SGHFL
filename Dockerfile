@@ -1,9 +1,9 @@
-FROM ghcr.io/nvidia/jax:jax
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+FROM ghcr.io/astral-sh/uv:debian-slim
 
-COPY pyproject.toml uv.lock download_data.sh /app/
+COPY pyproject.toml uv.lock .python-version download_data.sh /app/
 COPY data_processing /app/data_processing/
 COPY src/ /app/src/
+RUN mkdir /app/src/results
 
 WORKDIR /app
 RUN uv venv && \
@@ -12,3 +12,5 @@ RUN uv venv && \
     bash ./download_data.sh
 
 WORKDIR /app/src
+ARG GPU_TYPE=cpu
+RUN uv sync --extra $GPU_TYPE --compile-bytecode

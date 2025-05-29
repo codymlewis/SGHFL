@@ -3,14 +3,13 @@ name = "SGHFL"
 version = "0.1.0"
 description = "Smart grid hierarchical federated learning experiments"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     "chex>=0.1.89",
     "datasets>=3.5.0",
     "einops>=0.8.1",
     "flax>=0.10.6",
     "grid2op>=1.11.0",
-    "jax>=0.6.0",
     "jaxopt>=0.8.5",
     "l2rpn-baselines>=0.8.0",
     "lightsim2grid>=0.10.2",
@@ -22,6 +21,46 @@ dependencies = [
     "polars>=1.28.1",
     "safetensors>=0.5.3",
     "scikit-learn>=1.6.1",
-    "stable-baselines3>=2.6.0",
+    "stable-baselines3>=2.6.1a1",
     "tqdm>=4.67.1",
 ]
+
+[project.optional-dependencies]
+cpu = [
+    "jax>=0.6.1",
+    "torch>=2.7.0",
+]
+cuda = [
+    "jax[cuda12]>=0.6.1",
+    "torch>=2.7.0",
+]
+
+[tool.uv]
+conflicts = [
+    [
+        { extra = "cpu" },
+        { extra = "cuda" },
+    ],
+]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", extra = "cpu"},
+    { index = "pytorch-cpu", extra = "cuda"},
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[dependency-groups]
+dev = [
+    "isort>=6.0.1",
+    "pyright>=1.1.400",
+    "pytest>=8.3.5",
+    "ruff>=0.11.8",
+]
+
+[tool.ruff]
+line-length = 120
