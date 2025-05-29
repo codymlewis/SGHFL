@@ -49,7 +49,7 @@ Build the docker image (replace \<GPU\> with either cpu or cuda):
 docker buildx build -t local --build-arg GPU_TYPE=<GPU> .
 ```
 
-Start the docker image in interactive mode (`--gpus=all` can be removed if you are running a cpu only):
+Start the docker image in interactive mode (`--gpus=all` can be removed if you are running on cpu only):
 
 ```bash
 docker run --rm -it --gpus=all local bash
