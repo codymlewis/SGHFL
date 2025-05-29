@@ -43,7 +43,7 @@ source .venv/bin/activate
 
 ### Docker Setup
 
-Build the docker image (replace <GPU> with either cpu or cuda):
+Build the docker image (replace \<GPU\> with either cpu or cuda):
 
 ```bash
 docker buildx build -t local --build-arg GPU_TYPE=<GPU> .
